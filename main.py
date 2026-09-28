@@ -228,3 +228,23 @@ def process_deposit_receipt(message):
     except Exception as e:
         print(f"Failed to send to admin: {e}")
 
+# --- إعداد خادم الويب (Flask) المضمون للاستقرار على Render ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is perfectly running and alive!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    # تشغيل الفلاسك في مسار فرعي لكي لا يعطل تشغيل البوت الأسفل منه
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+if __name__ == "__main__":
+    # 1. تشغيل خادم الويب أولاً في خلفية خفيفة جداً
+    threading.Thread(target=run_flask).start()
+    print("🌐 خادم الويب يعمل الآن وينتظر إشارات Render...")
+    
+    # 2. تشغيل بوت التلغرام كالأمر الأساسي الذي يمسك السيرفر ويمنعه من الإغلاق
+    print("🤖 بوت التلغرام يعمل بكامل طاقته الآن...")
+    bot.infinity_polling(timeout=30, long_polling_timeout=15)
