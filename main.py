@@ -223,3 +223,27 @@ def process_manual_delivery(message, item_key, item):
     )
     
     admin_markup = types.InlineKeyboardMarkup()
+# --- إعداد خادم الويب (Flask) لحل مشكلة الإغلاق المبكر نهائياً ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is perfectly running!"
+
+def run_bot():
+    print("🤖 جاري تشغيل بوت التلغرام في الخلفية...")
+    try:
+        bot.infinity_polling(timeout=20, long_polling_timeout=10)
+    except Exception as e:
+        print(f"حدث خطأ في البوت: {e}")
+
+if __name__ == "__main__":
+    # تشغيل البوت في خلفية منفصلة تماماً
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    # تشغيل خادم الويب الأساسي الذي ينتظره Render
+    print("🌐 جاري تشغيل خادم الويب...")
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
