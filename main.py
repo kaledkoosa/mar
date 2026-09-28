@@ -5,10 +5,9 @@ import os
 import threading
 from flask import Flask
 
-# --- إعدادات الحماية والأمان (متوافقة مع السيرفرات) ---
-# يقوم بقراءة التوكن والـ ID من السيرفر، وإذا لم يجدهم يستخدم القيم الافتراضية للتجربة المحلية
+# --- إعدادات الحماية والأمان ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789")) # ضع الـ ID الخاص بحسابك التلغرام هنا
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -140,7 +139,7 @@ def callback_inline(call):
         customer_id = int(customer_id)
         
         if action == "approve":
-            msg = bot.send_message(chat_id, f"كم القيمة بالدولار ($) التي تريد إضافتها لحساب المستخدم `{customer_id}`؟")
+            msg = bot.send_message(chat_id, f"کم القيمة بالدولار ($) التي تريد إضافتها لحساب المستخدم `{customer_id}`؟")
             bot.register_next_step_handler(msg, confirm_deposit_amount, customer_id, call.message.message_id)
         elif action == "reject":
             try:
@@ -220,3 +219,7 @@ def process_manual_delivery(message, item_key, item):
         f"👤 الزبون: [{message.from_user.first_name}](tg://user?id={user_id}) (ID: `{user_id}`)\n"
         f"🎮 اللعبة: {item['name']}\n"
         f"🆔 معرف اللاعب (ID): `{player_id}`\n\n"
+        f"اشحن له الآن يدوياً، ثم اضغط على الزر لإشعاره بالانتهاء:"
+    )
+    
+    admin_markup = types.InlineKeyboardMarkup()
