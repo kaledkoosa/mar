@@ -57,7 +57,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]
+        balance = row
     conn.close()
     return balance
 
@@ -72,7 +72,7 @@ def get_total_users():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()[0]
+    count = cursor.fetchone()
     conn.close()
     return count
 
@@ -88,7 +88,7 @@ def admin_panel(message):
             f"اختر أحد الخيارات الإدارية أدناه:"
         )
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("💰 شحن رصيد لممستخدم يدوياً", callback_data="admin_deposit_manual"))
+        markup.add(types.InlineKeyboardButton("💰 شحن رصيد لمستخخدم يدوياً", callback_data="admin_deposit_manual"))
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown", reply_markup=markup)
     else:
         bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير البوت فقط.")
@@ -170,7 +170,7 @@ def callback_inline(call):
         customer_id = int(customer_id)
         
         if action == "approve":
-            msg = bot.send_message(chat_id, f"كم القيمة بالدولار ($) التي تريد إضافتها لحساب المستخدم `{customer_id}`؟")
+            msg = bot.send_message(chat_id, f"کم القيمة بالدولار ($) التي تريد إضافتها لحساب المستخدم `{customer_id}`؟")
             bot.register_next_step_handler(msg, confirm_deposit_amount, customer_id)
         elif action == "reject":
             try:
