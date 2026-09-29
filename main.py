@@ -57,7 +57,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row
+        balance = row[0]
     conn.close()
     return balance
 
@@ -72,7 +72,7 @@ def get_total_users():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()
+    count = cursor.fetchone()[0]
     conn.close()
     return count
 
@@ -85,13 +85,11 @@ def admin_panel(message):
         admin_text = (
             f"👑 **لوحة تحكم الإدارة الرسمية** 👑\n\n"
             f"👥 إجمالي عدد المشتركين في البوت: `{total_users}` مستخدم.\n\n"
-            f"اختر أحد الخيارات الإدارية أدناه:"
+            f"البوت يعمل الآن بنظام الأزرار التلقائية الفورية وحل مشكلة عدم الاستجابة المستمرة للشبكة."
         )
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("💰 شحن رصيد لمستخخدم يدوياً", callback_data="admin_deposit_manual"))
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير البوت فقط.")
+        bot.send_message(message.chat.id, "❌ عذراً، this أمر مخصص لمدير البوت فقط.")
 
 # --- أمر البدء /start ---
 @bot.message_handler(commands=['start'])
@@ -113,7 +111,7 @@ def send_welcome(message):
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- معالجة الأزرار الشفافة ---
+# --- معالجة الأزرار الشفافة التلقائية الفورية ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     user_id = call.from_user.id
@@ -150,10 +148,6 @@ def callback_inline(call):
         msg = bot.send_message(chat_id, PAYMENT_METHODS, parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_deposit_receipt)
 
-    elif call.data == "admin_deposit_manual":
-        msg = bot.send_message(chat_id, "✍️ أرسل الآن الـ ID الخاص بالصديق أو الزبون المراد شحن حسابه:")
-        bot.register_next_step_handler(msg, process_admin_target_user)
-
     elif call.data.startswith("buy_"):
         item_key = call.data.replace("buy_", "")
         item = PRICES[item_key]
@@ -165,19 +159,43 @@ def callback_inline(call):
         else:
             bot.answer_callback_query(call.id, "❌ رصيدك غير كافٍ! يرجى شحن حسابك أولاً بالضغط على 'شحن رصيد الحساب'.", show_alert=True)
 
-    elif call.data.startswith("deposit_"):
-        _, action, customer_id = call.data.split("_")
+    # نظام الأزرار الفورية المانع للتعليق
+    elif call.data.startswith("deposit_approve_"):
+        customer_id = int(call.data.replace("deposit_approve_", ""))
+        markup = types.InlineKeyboardMarkup(row_width=3)
+        markup.add(
+            types.InlineKeyboardButton("+1 $", callback_data=f"addamt_1_{customer_id}"),
+            types.InlineKeyboardButton("+5 $", callback_data=f"addamt_5_{customer_id}"),
+            types.InlineKeyboardButton("+10 $", callback_data=f"addamt_10_{customer_id}"),
+            types.InlineKeyboardButton("+20 $", callback_data=f"addamt_20_{customer_id}"),
+            types.InlineKeyboardButton("+50 $", callback_data=f"addamt_50_{customer_id}"),
+            types.InlineKeyboardButton("❌ إلغاء العملية", callback_data="main_menu")
+        )
+        bot.edit_message_caption("حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً وحل مشكلة عدم الاستجابة:", chat_id, call.message.message_id, reply_markup=markup)
+
+    elif call.data.startswith("addamt_"):
+        _, amount_str, customer_id = call.data.split("_")
+        amount = float(amount_str)
         customer_id = int(customer_id)
         
-        if action == "approve":
-            msg = bot.send_message(chat_id, f"کم القيمة بالدولار ($) التي تريد إضافتها لحساب المستخدم `{customer_id}`؟")
-            bot.register_next_step_handler(msg, confirm_deposit_amount, customer_id)
-        elif action == "reject":
+        update_user_balance(customer_id, amount)
+        new_balance = get_user_balance(customer_id)
+        
+        if customer_id != ADMIN_CHAT_ID:
             try:
-                bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة. يرجى التأكد من تفاصيل العملية أو التواصل مع الدعم للشكاوى.")
-                bot.edit_message_text(f"❌ تم رفض إيصال المستخدم {customer_id} وإبلاغه بنجاح.", chat_id, call.message.message_id)
+                bot.send_message(customer_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} $** لحسابك في البوت بنجاح.\n💰 رصيدك الحالي أصبح: {new_balance} $")
             except:
-                bot.edit_message_text(f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id, call.message.message_id)
+                pass
+        
+        bot.edit_message_caption(f"✅ تم شحن {amount}$ بنجاح فوري للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}$", chat_id, call.message.message_id, reply_markup=None)
+
+    elif call.data.startswith("deposit_reject_"):
+        customer_id = int(call.data.replace("deposit_reject_", ""))
+        try:
+            bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة. يرجى التأكد من تفاصيل العملية أو التواصل مع الدعم للشكاوى.")
+            bot.edit_message_caption(f"❌ تم رفض إيصال المستخدم {customer_id} وإبلاغه بنجاح.", chat_id, call.message.message_id, reply_markup=None)
+        except:
+            bot.edit_message_caption(f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id, call.message.message_id, reply_markup=None)
 
     elif call.data.startswith("done_"):
         _, customer_id, item_key = call.data.split("_")
@@ -186,18 +204,9 @@ def callback_inline(call):
         
         try:
             bot.send_message(customer_id, f"✅ بشرى سارة! تم شحن باقة **{item_name}** لحسابك في اللعبة بنجاح. العب واستمتع! 🎮")
-            bot.edit_message_text(f"✅ قمت بالموافقة وشحن الطلب للمستخدم {customer_id} بنجاح.", chat_id, call.message.message_id)
+            bot.edit_message_text(f"✅ قمت بالموافقة وشحن الطلب للمستخدم {customer_id} بنجاح.", chat_id, call.message.message_id, reply_markup=None)
         except:
             bot.send_message(chat_id, f"⚠️ تم تحديث العملية ولكن تعذر إرسال رسالة للزبون {customer_id}.")
-
-# --- دالات لوحة الأدمن اليدوية ---
-def process_admin_target_user(message):
-    try:
-        target_id = int(message.text)
-        msg = bot.send_message(message.chat.id, f"كم المبلغ ($) الذي تريد إضافته لحساب `{target_id}` حالياً؟")
-        bot.register_next_step_handler(msg, confirm_deposit_amount, target_id)
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ يجب إرسال رقم آيدي (ID) صحيح.")
 
 # --- دالة استلام إيصال الشحن وإرساله للأدمن ---
 def process_deposit_receipt(message):
@@ -212,39 +221,3 @@ def process_deposit_receipt(message):
     bot.send_message(chat_id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
     admin_markup = types.InlineKeyboardMarkup()
-    admin_markup.add(
-        types.InlineKeyboardButton("✅ قبول وإضافة رصيد", callback_data=f"deposit_approve_{user_id}"),
-        types.InlineKeyboardButton("❌ رفض الإيصال", callback_data=f"deposit_reject_{user_id}")
-    )
-    
-    try:
-        bot.send_photo(
-            ADMIN_CHAT_ID, 
-            photo_id, 
-            caption=f"💰 **إشعار إيداع رصيد جديد**\n\n👤 المستخدم: [{message.from_user.first_name}](tg://user?id={user_id})\n🆔 رقم حسابه: `{user_id}`\n\nتأكد من وصول المال لحسابك الحقيقي ثم اتخذ القرار:", 
-            parse_mode="Markdown", 
-            reply_markup=admin_markup
-        )
-    except Exception as e:
-        print(f"Failed to send to admin: {e}")
-
-# --- إعداد خادم الويب (Flask) المضمون للاستقرار على Render ---
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is perfectly running and alive!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    # تشغيل الفلاسك في مسار فرعي لكي لا يعطل تشغيل البوت الأسفل منه
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-if __name__ == "__main__":
-    # 1. تشغيل خادم الويب أولاً في خلفية خفيفة جداً
-    threading.Thread(target=run_flask).start()
-    print("🌐 خادم الويب يعمل الآن وينتظر إشارات Render...")
-    
-    # 2. تشغيل بوت التلغرام كالأمر الأساسي الذي يمسك السيرفر ويمنعه من الإغلاق
-    print("🤖 بوت التلغرام يعمل بكامل طاقته الآن...")
-    bot.infinity_polling(timeout=30, long_polling_timeout=15)
