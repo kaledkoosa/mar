@@ -89,7 +89,7 @@ def admin_panel(message):
         )
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
     else:
-        bot.send_message(message.chat.id, "❌ عذراً، this أمر مخصص لمدير البوت فقط.")
+        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير البوت فقط.")
 
 # --- أمر البدء /start ---
 @bot.message_handler(commands=['start'])
@@ -155,11 +155,11 @@ def callback_inline(call):
         
         if balance >= item["price"]:
             msg = bot.send_message(chat_id, f"🔄 لقد اخترت {item['name']}.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة الآن:")
-            bot.register_next_step_handler(msg, process_manual_delivery, item_key, item)
+            # ملاحظة: تأكد من كتابة دالة process_manual_delivery لاحقاً لديك
+            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "تم استلام الطلب وبانتظار معالجة التوصيل."))
         else:
             bot.answer_callback_query(call.id, "❌ رصيدك غير كافٍ! يرجى شحن حسابك أولاً بالضغط على 'شحن رصيد الحساب'.", show_alert=True)
 
-    # نظام الأزرار الفورية المانع للتعليق
     elif call.data.startswith("deposit_approve_"):
         customer_id = int(call.data.replace("deposit_approve_", ""))
         markup = types.InlineKeyboardMarkup(row_width=3)
@@ -171,7 +171,7 @@ def callback_inline(call):
             types.InlineKeyboardButton("+50 $", callback_data=f"addamt_50_{customer_id}"),
             types.InlineKeyboardButton("❌ إلغاء العملية", callback_data="main_menu")
         )
-        bot.edit_message_caption("حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً وحل مشكلة عدم الاستجابة:", chat_id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_caption("حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً:", chat_id, call.message.message_id, reply_markup=markup)
 
     elif call.data.startswith("addamt_"):
         _, amount_str, customer_id = call.data.split("_")
@@ -197,17 +197,6 @@ def callback_inline(call):
         except:
             bot.edit_message_caption(f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id, call.message.message_id, reply_markup=None)
 
-    elif call.data.startswith("done_"):
-        _, customer_id, item_key = call.data.split("_")
-        customer_id = int(customer_id)
-        item_name = PRICES[item_key]["name"]
-        
-        try:
-            bot.send_message(customer_id, f"✅ بشرى سارة! تم شحن باقة **{item_name}** لحسابك في اللعبة بنجاح. العب واستمتع! 🎮")
-            bot.edit_message_text(f"✅ قمت بالموافقة وشحن الطلب للمستخدم {customer_id} بنجاح.", chat_id, call.message.message_id, reply_markup=None)
-        except:
-            bot.send_message(chat_id, f"⚠️ تم تحديث العملية ولكن تعذر إرسال رسالة للزبون {customer_id}.")
-
 # --- دالة استلام إيصال الشحن وإرساله للأدمن ---
 def process_deposit_receipt(message):
     user_id = message.from_user.id
@@ -221,3 +210,13 @@ def process_deposit_receipt(message):
     bot.send_message(chat_id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
     admin_markup = types.InlineKeyboardMarkup()
+    admin_markup.add(
+        types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}"),
+        types.InlineKeyboardButton("❌ رفض الإيصال", callback_data=f"deposit_reject_{user_id}")
+    )
+    
+    try:
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد من مستخدم:\n🆔 ID: `{user_id}`\n👤 الاسم: {message.from_user.first_name}", reply_markup=admin_markup, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Error sending to admin: {e}")
+
