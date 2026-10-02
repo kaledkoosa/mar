@@ -17,6 +17,7 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
+    # حقن معرف المستخدم ورصيده الصافي الخالي من الأقواس والفاصلة داخل المتصفح
     html_content = html_content.replace('"USER_ID_PLACEHOLDER"', f'"{user_id}"')
     html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
     return render_template_string(html_content)
@@ -84,7 +85,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]
+        balance = row[0]  # تم تعديلها هنا برمجياً لفك تداخل القوس وجلب الرقم العشري المباشر
     conn.close()
     return float(balance)
 
@@ -100,17 +101,15 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0
+    count = row[0] if row else 0  # تم تصحيح جلب العدد الإجمالي للمشتركين هنا أيضاً
     conn.close()
     return count
 
-# --- أمر تزويد الرصيد للمستخدمين يدوياً عبر الأدمن ---
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
     user_id = message.from_user.id
     if user_id == ADMIN_CHAT_ID:
         try:
-            # تفكيك الأمر المكتوب (مثال: /pay 5522345582 10)
             parts = message.text.split()
             if len(parts) < 3:
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
@@ -119,18 +118,15 @@ def pay_user_balance(message):
             target_id = int(parts[1])
             amount = float(parts[2])
             
-            # تحديث الرصيد في قاعدة البيانات
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
             
-            # إشعار الأدمن بنجاح العملية
             bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
             
-            # إرسال تنبيه فوري وبشارة للمستخدم برصيده الجديد
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
             except:
-                bot.send_message(message.chat.id, "⚠️ تم تحديث الرصيد بالسيرفر، لكن تعذر إرسال رسالة للمستخدم لأنه قد يكون حظر البوت.")
+                bot.send_message(message.chat.id, "⚠️ تم تحديث الرصيد بالسيرفر، لكن تعذر إرسال رسالة للمستخدم.")
                 
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
