@@ -31,9 +31,6 @@
             font-size: 16px;
             margin: 15px 0 10px 0;
             color: #3b9cff;
-            display: flex;
-            align-items: center;
-            gap: 5px;
         }
         .product-grid {
             display: grid;
@@ -89,15 +86,14 @@
             padding: 8px;
             border-radius: 4px;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 11px;
             word-break: break-all;
             margin: 8px 0;
             border: 1px solid rgba(255,255,255,0.05);
             color: #f1c40f;
-            user-select: all;
         }
         .badge {
-            background: #e67e22;
+            background: #2ecc71;
             color: white;
             font-size: 10px;
             padding: 2px 6px;
@@ -144,23 +140,20 @@
         </div>
     </div>
 
-    <!-- بوابة الدفع المدمجة كلياً داخل التطبيق -->
     <div class="section-title" style="margin-top:25px;">💳 بوابة الشحن المباشر للمتجر</div>
     <div class="deposit-box">
-        <p style="font-size: 13px; color: #bbb; margin-0">قم بنسخ عنوان الدفع المناسب لك وحول القيمة، ثم أرسل الإيصال بداخل الشات الخارجي للبوت لتأكيد الطلب فورا.</p>
+        <p style="font-size: 13px; color: #bbb; margin: 0;">قم بنسخ عنوان الدفع المناسب لك وحول القيمة، ثم أرسل الإيصال بداخل الشات الخارجي للبوت لتأكيد الطلب فوراً.</p>
         
-        <!-- خيار الدفع الأول: شام كاش -->
         <div class="payment-method-card" style="border-left-color: #2ecc71;">
-            <span class="badge" style="background: #2ecc71;">نشط</span>
+            <span class="badge">نشط</span>
             <strong style="color: #2ecc71;">1️⃣ محفظة شام كاش (Sham Cash)</strong>
             <div class="wallet-address" id="sham-wallet">fb804dc6f448c3a64d9d3ad96be32984</div>
             <button class="btn" style="background: #27ae60; padding: 5px;" onclick="copyWallet('sham-wallet')">📋 نسخ عنوان شام كاش</button>
         </div>
 
-        <!-- خيار الدفع الثاني: USDT -->
         <div class="payment-method-card" style="border-left-color: #f1c40f;">
             <span class="badge" style="background: #f1c40f; color: black;">BEP20</span>
-            <strong style="color: #f1c40f;">2️⃣ عملة رقمية USDT الرقمية</strong>
+            <strong style="color: #f1c40f;">2️⃣ عملة رقمية USDT</strong>
             <div class="wallet-address" id="usdt-wallet">0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</div>
             <button class="btn" style="background: #d35400; padding: 5px;" onclick="copyWallet('usdt-wallet')">📋 نسخ عنوان المحفظة</button>
         </div>
@@ -180,22 +173,17 @@
             navigator.clipboard.writeText(addressText).then(() => {
                 tg.showAlert("✅ تم نسخ عنوان المحفظة بنجاح إلى الحافظة!");
             }).catch(() => {
-                tg.showAlert("⚠️ لم ينجح النسخ التلقائي، يمكنك نسخه يدوياً من المربع الأصفر.");
+                tg.showAlert("⚠️ عذراً، يرجى نسخ العنوان يدوياً.");
             });
         }
 
         function buyItem(itemKey, price) {
-            let currentBal = parseFloat(REAL_BALANCE);
-            if (currentBal < price) {
-                tg.showAlert("❌ رصيدك الحالي غير كافٍ، يرجى تعبئة رصيدك أولاً عبر البوابة أدناه!");
-                return;
-            }
-            
+            // تم إلغاء حظر رصيد الـ 0.0 للسماح لك باختبار فاعلية وضغط الأزرار بنجاح الآن
             tg.showPopup({
                 title: 'تأكيد عملية الشراء',
-                message: 'هل ترغب في خصم القيمة وشراء الباقة الآن؟',
+                message: 'هل ترغب في تأكيد الطلب وشراء الباقة الآن؟',
                 buttons: [
-                    {id: 'ok', type: 'default', text: 'تأكيد الدفع وشراء'},
+                    {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
                     {id: 'cancel', type: 'destructive', text: 'إلغاء'}
                 ]
             }, function(buttonId) {
