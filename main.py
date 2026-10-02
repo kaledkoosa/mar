@@ -5,13 +5,25 @@ import os
 import threading
 from flask import Flask
 
-# --- إعدادات الحماية والأمان ---
+# --- إعداد سيرفر Flask لمنع السيرفر من النوم ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "البوت يعمل بنجاح وبشكل مستمر 24/7!"
+
+def run_flask():
+    # Render يمرر البورت تلقائياً عبر متغير بيئي اسمه PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# --- إعدادات الحماية والأمان لبوت التيليجرام ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# --- معلومات الدفع المحدثة ---
+# --- معلومات الدفع ---
 PAYMENT_METHODS = (
     "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
     "1️⃣ **شام كاش (Sham Cash):**\n"
@@ -155,8 +167,7 @@ def callback_inline(call):
         
         if balance >= item["price"]:
             msg = bot.send_message(chat_id, f"🔄 لقد اخترت {item['name']}.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة الآن:")
-            # ملاحظة: تأكد من كتابة دالة process_manual_delivery لاحقاً لديك
-            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "تم استلام الطلب وبانتظار معالجة التوصيل."))
+            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID الخاص بك بنجاح، وجاري مراجعة الطلب وتسليمه من قبل الإدارة الفورية."))
         else:
             bot.answer_callback_query(call.id, "❌ رصيدك غير كافٍ! يرجى شحن حسابك أولاً بالضغط على 'شحن رصيد الحساب'.", show_alert=True)
 
@@ -171,7 +182,7 @@ def callback_inline(call):
             types.InlineKeyboardButton("+50 $", callback_data=f"addamt_50_{customer_id}"),
             types.InlineKeyboardButton("❌ إلغاء العملية", callback_data="main_menu")
         )
-        bot.edit_message_caption("حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً:", chat_id, call.message.message_id, reply_markup=markup)
+        bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
 
     elif call.data.startswith("addamt_"):
         _, amount_str, customer_id = call.data.split("_")
@@ -187,36 +198,27 @@ def callback_inline(call):
             except:
                 pass
         
-        bot.edit_message_caption(f"✅ تم شحن {amount}$ بنجاح فوري للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}$", chat_id, call.message.message_id, reply_markup=None)
+        bot.edit_message_caption(caption=f"✅ تم شحن {amount}$ بنجاح فوري للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
     elif call.data.startswith("deposit_reject_"):
         customer_id = int(call.data.replace("deposit_reject_", ""))
         try:
             bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة. يرجى التأكد من تفاصيل العملية أو التواصل مع الدعم للشكاوى.")
-            bot.edit_message_caption(f"❌ تم رفض إيصال المستخدم {customer_id} وإبلاغه بنجاح.", chat_id, call.message.message_id, reply_markup=None)
+            bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id} وإبلاغه بنجاح.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
         except:
-            bot.edit_message_caption(f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id, call.message.message_id, reply_markup=None)
+            bot.edit_message_caption(caption=f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
 # --- دالة استلام إيصال الشحن وإرساله للأدمن ---
 def process_deposit_receipt(message):
     user_id = message.from_user.id
-    chat_id = message.chat.id
     
     if message.content_type != 'photo':
-        bot.send_message(chat_id, "❌ خطأ! يجب إرسال **صورة** واضحة للإيصال. يرجى الضغط على زر الشحن والمحاولة مجدداً.")
+        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال **صورة** واضحة للإيصال. يرجى الضغط على زر الشحن والمحاولة مجدداً.")
         return
 
     photo_id = message.photo[-1].file_id
-    bot.send_message(chat_id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
+    bot.send_message(message.chat.id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
     admin_markup = types.InlineKeyboardMarkup()
     admin_markup.add(
         types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}"),
-        types.InlineKeyboardButton("❌ رفض الإيصال", callback_data=f"deposit_reject_{user_id}")
-    )
-    
-    try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد من مستخدم:\n🆔 ID: `{user_id}`\n👤 الاسم: {message.from_user.first_name}", reply_markup=admin_markup, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Error sending to admin: {e}")
-
