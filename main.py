@@ -6,7 +6,6 @@ import threading
 import json
 from flask import Flask, render_template_string
 
-# --- إعداد سيرفر Flask لاستضافة التطبيق المصغر ومنع النوم ---
 app = Flask('')
 
 @app.route('/shop/<int:user_id>')
@@ -16,21 +15,18 @@ def shop_interface(user_id):
         with open("index.html", "r", encoding="utf-8") as f:
             html_content = f.read()
     except:
-        return "خطأ: لم يتم العثور على ملف index.html في سيرفر المشروع."
-        
-    # تمرير الرصيد للـ Web App
+        return "Error: index.html not found."
     html_content = html_content.replace("urlParams.get('balance') || '0.0'", f"'{balance}'")
     return render_template_string(html_content)
 
 @app.route('/')
 def home():
-    return "التطبيق المصغر والسيرفر يعملان بنجاح 24/7!"
+    return "السيرفر يعمل بنجاح!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- إعدادات الحماية والأمان لبوت التيليجرام ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -38,13 +34,13 @@ RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 PAYMENT_METHODS = (
-    "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
-    "1️⃣ **شام كاش (Sham Cash):**\n"
-    "📞 رقم المحفظة: `09xxxxxxxx`\n\n"
-    "2️⃣ **عملة رقمية USDT (شبكة BEP20):**\n"
-    "🌐 العنوان (Address):\n"
-    "`0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`\n\n"
-    "📌 قم بتحويل المبلغ، ثم أرسل **صورة إيصال التحويل** هنا فوراً."
+    "💳 طرق الشحن المتوفرة حالياً:\n\n"
+    "1️⃣ شام كاش (Sham Cash):\n"
+    "📞 رقم المحفظة: 09xxxxxxxx\n\n"
+    "2️⃣ عملة رقمية USDT (شبكة BEP20):\n"
+    "🌐 العنوان:\n"
+    "0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\n"
+    "📌 قم بتحويل المبلغ، ثم أرسل صورة إيصال التحويل هنا فوراً."
 )
 
 PRICES = {
@@ -86,98 +82,93 @@ def update_user_balance(user_id, amount):
     conn.commit()
     conn.close()
 
-# --- أمر البدء /start ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
-    
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = (
-        f"👋 أهلاً بك في متجر شحن الألعاب الفوري الجديد!\n\n"
-        f"💰 رصيدك الحالي: {balance} \$\n\n"
-        f"اضغط على الزر أدناه لفتح المتجر كمكتبة ألعاب وتطبيق مصغر تفاعلي:"
-    )
-    
+    welcome_text = f"👋 أهلاً بك في متجر الشحن الفوري!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح المتجر:"
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- استقبال البيانات المرسلة من التطبيق المصغر ---
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app_data(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
-    
     try:
         data = json.loads(message.web_app_data.data)
         action = data.get("action")
-        
         if action == "buy":
             item_key = data.get("item")
             item = PRICES[item_key]
-            
             update_user_balance(user_id, -item["price"])
-            msg = bot.send_message(chat_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} \$ من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
-            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
-            
+            msg = bot.send_message(chat_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} دولار من رصيدك.\nالرجاء إرسال الـ ID الخاص بك الآن للشحن:")
+            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً."))
         elif action == "deposit":
-            msg = bot.send_message(chat_id, PAYMENT_METHODS, parse_mode="Markdown")
+            msg = bot.send_message(chat_id, PAYMENT_METHODS)
             bot.register_next_step_handler(msg, process_deposit_receipt)
-            
     except Exception as e:
-        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة الطلب من التطبيق المصغر.")
+        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة الطلب.")
 
-# --- الأزرار التفاعلية للأدمن لتعيين وشحن الرصيد للعميل ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     chat_id = call.message.chat.id
+    data = call.data
     
-    if call.data.startswith("deposit_approve_"):
-        customer_id = int(call.data.replace("deposit_approve_", ""))
-        markup = types.InlineKeyboardMarkup(row_width=3)
+    if data.startswith("deposit_approve_"):
+        customer_id = data.replace("deposit_approve_", "")
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("+1$", callback_data=f"add_1_{customer_id}"),
+            types.InlineKeyboardButton("+5$", callback_data=f"add_5_{customer_id}"),
+            types.InlineKeyboardButton("+10$", callback_data=f"add_10_{customer_id}"),
+            types.InlineKeyboardButton("+20$", callback_data=f"add_20_{customer_id}")
+        )
+        bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         
-        btn1 = types.InlineKeyboardButton("+1 \$", callback_data=f"addamt_1_{customer_id}")
-        btn5 = types.InlineKeyboardButton("+5 \$", callback_data=f"addamt_5_{customer_id}")
-        btn10 = types.InlineKeyboardButton("+10 \$", callback_data=f"addamt_10_{customer_id}")
-        btn20 = types.InlineKeyboardButton("+20 \(", callback_data=f"addamt_20_{customer_id}")                  markup.add(btn1, btn5, btn10, btn20)         bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)              elif call.data.startswith("addamt_"):         _, amount_str, customer_id = call.data.split("_")         amount = float(amount_str)         customer_id = int(customer_id)                  update_user_balance(customer_id, amount)         new_balance = get_user_balance(customer_id)                  try:             bot.send_message(customer_id, f"🎉 تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} \)")
+    elif data.startswith("add_"):
+        parts = data.split("_")
+        amount = float(parts[1])
+        customer_id = int(parts[2])
+        update_user_balance(customer_id, amount)
+        new_balance = get_user_balance(customer_id)
+        try:
+            bot.send_message(customer_id, f"🎉 تم إضافة {amount} دولار لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} دولار")
         except:
             pass
+        bot.edit_message_caption(caption=f"✅ تم شحن {amount} دولار للمستخدم {customer_id}.\n💰 رصيده الآن: {new_balance} دولار", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
         
-        bot.edit_message_caption(caption=f"✅ تم شحن {amount} \$ بنجاح للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance} \$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
-
-    elif call.data.startswith("deposit_reject_"):
-        customer_id = int(call.data.replace("deposit_reject_", ""))
+    elif data.startswith("deposit_reject_"):
+        customer_id = int(data.replace("deposit_reject_", ""))
         try:
             bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة.")
         except:
             pass
-        bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id} بنجاح.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+        bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     if message.content_type != 'photo':
-        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة الإيصال. يرجى إعادة المحاولة.")
+        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة الإيصال.")
         return
-
     photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة الفورية...")
+    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة...")
     
-    btn_approve = types.InlineKeyboardButton("✅ موافقة", callback_data=f"deposit_approve_{user_id}")
-    btn_reject = types.InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{user_id}")
-    admin_markup = types.InlineKeyboardMarkup()
-    admin_markup.add(btn_approve, btn_reject)
-    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ موافقة", callback_data=f"deposit_approve_{user_id}"),
+        types.InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{user_id}")
+    )
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID: `{user_id}`\n👤 الاسم: {message.from_user.first_name}", reply_markup=admin_markup, parse_mode="Markdown")
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل شحن جديد:\n🆔 ID: {user_id}\n👤 الاسم: {message.from_user.first_name}", reply_markup=markup)
     except Exception as e:
-        print(f"Error sending to admin: {e}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    
-    print("Mini App Server is running successfully...")
+    print("Server is starting...")
     bot.infinity_polling()
