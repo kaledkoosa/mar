@@ -9,12 +9,9 @@ from flask import Flask, render_template_string
 # --- إعداد سيرفر Flask لاستضافة التطبيق المصغر ومنع النوم ---
 app = Flask('')
 
-# قراءة واجهة index.html المرفقة بالمشروع وعرضها ديناميكياً
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
-    # جلب رصيد المستخدم الحالي لعرضه مباشرة في التطبيق المصغر
     balance = get_user_balance(user_id)
-    
     try:
         with open("index.html", "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -36,7 +33,6 @@ def run_flask():
 # --- إعدادات الحماية والأمان لبوت التيليجرام ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
-# رابط مشروعك على ريندر (مثال: https://onrender.com) ليفتح التطبيق المصغر من خلاله
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -96,7 +92,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
-    # بناء رابط التطبيق المصغر الديناميكي الخاص بالمستخدم
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
     welcome_text = (
@@ -106,11 +101,10 @@ def send_welcome(message):
     )
     
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    # إضافة زر التطبيق المصغر المدمج بداخل الكيبورد الرئيسي للعميل
     markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- استقبال البيانات المرسلة من التطبيق المصغر (Web App Data) ---
+# --- استقبال البيانات المرسلة من التطبيق المصغر ---
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app_data(message):
     user_id = message.from_user.id
@@ -124,9 +118,8 @@ def handle_web_app_data(message):
             item_key = data.get("item")
             item = PRICES[item_key]
             
-            # خصم السعر وتأكيد الطلب
             update_user_balance(user_id, -item["price"])
-            msg = bot.send_message(chat_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']}\$ من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
+            msg = bot.send_message(chat_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} \$ من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
             bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
             
         elif action == "deposit":
@@ -136,7 +129,7 @@ def handle_web_app_data(message):
     except Exception as e:
         bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة الطلب من التطبيق المصغر.")
 
-# --- الأزرار التفاعلية للأدمن ---
+# --- الأزرار التفاعلية للأدمن لتعيين وشحن الرصيد للعميل ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
     chat_id = call.message.chat.id
@@ -152,7 +145,7 @@ def callback_inline(call):
         except:
             pass
         
-        bot.edit_message_caption(caption=f"✅ تم شحن {amount}\$ بنجاح للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}\$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+        bot.edit_message_caption(caption=f"✅ تم شحن {amount} \$ بنجاح للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance} \$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
     elif call.data.startswith("deposit_reject_"):
         customer_id = int(call.data.replace("deposit_reject_", ""))
