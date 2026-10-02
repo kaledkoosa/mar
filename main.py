@@ -6,6 +6,7 @@ import threading
 import json
 from flask import Flask, render_template_string, request, jsonify
 
+# تفعيل محرك Flask
 app = Flask('')
 
 @app.route('/shop/<int:user_id>')
@@ -21,7 +22,7 @@ def shop_interface(user_id):
     html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
     return render_template_string(html_content)
 
-# استقبال البيانات من تطبيق الويب وتشغيلها في Thread منفصل لضمان الفورية وعدم تعليق الشبكة
+# استقبال البيانات من تطبيق الويب وتشغيلها في Thread منفصل لضمان الاستجابة الفورية
 @app.route('/api/action', methods=['POST'])
 def handle_api_action():
     data = request.json
@@ -48,8 +49,7 @@ def send_buy_confirmation(user_id, item):
 
 def send_deposit_methods(user_id):
     try:
-        msg = bot.send_message(user_id, PAYMENT_METHODS, parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_deposit_receipt)
+        bot.send_message(user_id, PAYMENT_METHODS, parse_mode="Markdown")
     except Exception as e:
         print(f"Error sending deposit msg: {e}")
 
@@ -61,13 +61,13 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
+# إعداد البوت مع تفعيل الـ Threaded لضمان عمل الواجهات مع المحادثات بالتوازي
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
-# --- تم تحديث عنوان شام كاش الخاص بك هنا بنجاح ---
 PAYMENT_METHODS = (
     "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
     "1️⃣ **شام كاش (Sham Cash):**\n"
@@ -165,13 +165,11 @@ def callback_inline(call):
             pass
         bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
+@bot.message_handler(content_types=['photo'])
 def process_deposit_receipt(message):
     user_id = message.from_user.id
-    if message.content_type != 'photo':
-        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة إيصال الدفع.")
-        return
     photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة...")
+    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة الفورية...")
     
     markup = types.InlineKeyboardMarkup()
     markup.add(
