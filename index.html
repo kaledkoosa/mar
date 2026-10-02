@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر شحن الألعاب الفوري</title>
-    <!-- استدعاء مكتبة تيليجرام الرسمية للتطبيقات المصغرة -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -70,16 +69,6 @@
             border-radius: 12px;
             margin-top: 20px;
         }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 6px;
-            border: 1px solid rgba(255,255,255,0.1);
-            background: #17212b;
-            color: white;
-            box-sizing: border-box;
-        }
     </style>
 </head>
 <body>
@@ -89,7 +78,7 @@
     </div>
 
     <div class="balance-card">
-        💰 رصيدك الحالي: <span id="user-balance">جاري التحميل...</span> $
+        💰 رصيدك الحالي: <span id="user-balance">0.0</span> $
     </div>
 
     <div class="section-title">📦 باقات شحن ببجي موبايل (PUBG)</div>
@@ -122,22 +111,22 @@
 
     <div class="deposit-section">
         <div class="section-title" style="margin-top:0;">💳 شحن رصيد الحساب</div>
-        <p style="font-size: 13px; color: #aaa;">لشحن حسابك، يرجى تعبئة المعرف الخاص بك وإتمام العملية عبر البوت لتأكيد الإيصال.</p>
+        <p style="font-size: 13px; color: #aaa;">لشحن حسابك، اضغط على الزر ليتم تزويدك ببيانات الدفع المعتمدة وإرسال الإيصال بداخل محادثة البوت.</p>
         <button class="btn" style="background: #e67e22;" onclick="requestDeposit()">طلب شحن الرصيد</button>
     </div>
 
     <script>
-        // تهيئة تطبيق تيليجرام المصغر
         const tg = window.Telegram.WebApp;
-        tg.expand(); // تمديد التطبيق ليأخذ الشاشة كاملة
+        tg.expand();
 
-        // جلب معرف المستخدم تلقائياً
-        const urlParams = new URLSearchParams(window.location.search);
-        const userBalance = urlParams.get('balance') || '0.0';
-        document.getElementById('user-balance').innerText = userBalance;
+        // سيتم حقن هذه المعرفات ديناميكياً بواسطة خادم الفلاسک
+        const CURRENT_USER_ID = "USER_ID_PLACEHOLDER";
+        const REAL_BALANCE = "USER_BALANCE_PLACEHOLDER";
+        
+        document.getElementById('user-balance').innerText = REAL_BALANCE;
 
         function buyItem(itemKey, price) {
-            let currentBal = parseFloat(userBalance);
+            let currentBal = parseFloat(REAL_BALANCE);
             if (currentBal < price) {
                 tg.showAlert("❌ رصيدك الحالي غير كافٍ، يرجى شحن الحساب أولاً!");
                 return;
@@ -152,16 +141,27 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // إرسال البيانات للبوت لإتمام عملية الخصم وطلب الـ ID
-                    tg.sendData(JSON.stringify({action: "buy", item: itemKey}));
-                    tg.close();
+                    // إرسال طلب الشراء المباشر للخلفية البرمجية عبر الـ API
+                    fetch('/api/action', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({user_id: CURRENT_USER_ID, action: "buy", item: itemKey})
+                    }).then(() => {
+                        tg.close();
+                    });
                 }
             });
         }
 
         function requestDeposit() {
-            tg.sendData(JSON.stringify({action: "deposit"}));
-            tg.close();
+            // إرسال طلب الشحن المباشر للخلفية البرمجية عبر الـ API
+            fetch('/api/action', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: CURRENT_USER_ID, action: "deposit"})
+            }).then(() => {
+                tg.close();
+            });
         }
     </script>
 </body>
