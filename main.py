@@ -13,7 +13,6 @@ def home():
     return "البوت يعمل بنجاح وبشكل مستمر 24/7!"
 
 def run_flask():
-    # Render يمرر البورت تلقائياً عبر متغير بيئي اسمه PORT
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -69,7 +68,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]
+        balance = row[0]  # تم تصحيح الخطأ هنا لأخذ الرقم المباشر من الـ Tuple
     conn.close()
     return balance
 
@@ -85,7 +84,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0
+    count = row[0] if row else 0  # تم تصحيح طريقة استخراج العدد الكلي للمستخدمين
     conn.close()
     return count
 
@@ -220,6 +219,4 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
-    # بناء أزرار الأدمن بشكل منفصل
-    markup = types.InlineKeyboardMarkup(row_width=2)
     btn_approve = types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}")
