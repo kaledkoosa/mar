@@ -18,7 +18,7 @@ def shop_interface(user_id):
     except:
         return "خطأ: لم يتم العثور على ملف index.html في سيرفر المشروع."
         
-    # تمرير الرصيد للـ Web App عبر الـ URL Query
+    # تمرير الرصيد للـ Web App
     html_content = html_content.replace("urlParams.get('balance') || '0.0'", f"'{balance}'")
     return render_template_string(html_content)
 
@@ -137,11 +137,11 @@ def callback_inline(call):
     if call.data.startswith("deposit_approve_"):
         customer_id = int(call.data.replace("deposit_approve_", ""))
         markup = types.InlineKeyboardMarkup(row_width=3)
-        markup.add(
-            types.InlineKeyboardButton("+1 \$", callback_data=f"addamt_1_{customer_id}"),
-            types.InlineKeyboardButton("+5 \$", callback_data=f"addamt_5_{customer_id}"),
-            types.InlineKeyboardButton("+10 \$", callback_data=f"addamt_10_{customer_id}"),
-            types.InlineKeyboardButton("+20 \(", callback_data=f"addamt_20_{customer_id}")         )         bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)      elif call.data.startswith("addamt_"):         _, amount_str, customer_id = call.data.split("_")         amount = float(amount_str)         customer_id = int(customer_id)                  update_user_balance(customer_id, amount)         new_balance = get_user_balance(customer_id)                  try:             bot.send_message(customer_id, f"🎉 تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} \)")
+        
+        btn1 = types.InlineKeyboardButton("+1 \$", callback_data=f"addamt_1_{customer_id}")
+        btn5 = types.InlineKeyboardButton("+5 \$", callback_data=f"addamt_5_{customer_id}")
+        btn10 = types.InlineKeyboardButton("+10 \$", callback_data=f"addamt_10_{customer_id}")
+        btn20 = types.InlineKeyboardButton("+20 \(", callback_data=f"addamt_20_{customer_id}")                  markup.add(btn1, btn5, btn10, btn20)         bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)              elif call.data.startswith("addamt_"):         _, amount_str, customer_id = call.data.split("_")         amount = float(amount_str)         customer_id = int(customer_id)                  update_user_balance(customer_id, amount)         new_balance = get_user_balance(customer_id)                  try:             bot.send_message(customer_id, f"🎉 تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} \)")
         except:
             pass
         
