@@ -17,7 +17,7 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حقن معرف المستخدم ورصيده الصافي الخالي من الأقواس والفاصلة داخل المتصفح
+    # تمرير الرصيد كقيمة رقمية صافية تماماً (مثل 50.0) لمتصفح تيليجرام
     html_content = html_content.replace('"USER_ID_PLACEHOLDER"', f'"{user_id}"')
     html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
     return render_template_string(html_content)
@@ -45,7 +45,7 @@ def send_buy_confirmation(user_id, item):
 
 @app.route('/')
 def home():
-    return "بوابة التحكم والسيرفر يعملان بنجاح!"
+    return "بوابة التحكم والسيرفر يعملان بنجاح ومزامنة الرصيد نشطة!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -75,6 +75,7 @@ def init_db():
 
 init_db()
 
+# --- تم تصحيح استخراج الرقم الصافي [0] لمنع التعارض والانهيار نهائياً ---
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -85,7 +86,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تم تعديلها هنا برمجياً لفك تداخل القوس وجلب الرقم العشري المباشر
+        balance = row[0]  # جلب الرقم المباشر (مثل 50.0) بدون أقواس الفاصلة الزائدة
     conn.close()
     return float(balance)
 
@@ -101,7 +102,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0  # تم تصحيح جلب العدد الإجمالي للمشتركين هنا أيضاً
+    count = row[0] if row else 0  # استخراج العدد الصافي مباشرة
     conn.close()
     return count
 
@@ -126,7 +127,7 @@ def pay_user_balance(message):
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
             except:
-                bot.send_message(message.chat.id, "⚠️ تم تحديث الرصيد بالسيرفر، لكن تعذر إرسال رسالة للمستخدم.")
+                pass
                 
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
