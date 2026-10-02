@@ -84,7 +84,8 @@ def get_total_users():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    count = row[0] if row else 0
     conn.close()
     return count
 
@@ -208,7 +209,7 @@ def callback_inline(call):
         except:
             bot.edit_message_caption(caption=f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
-# --- دالة استلام إيصال الشحن وإرساله للأدمن ---
+# --- دالة استلام إيصال الشحن وإرساله للأدمن بعد حل مشكلة الأقواس ---
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     
@@ -219,6 +220,5 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
-    admin_markup = types.InlineKeyboardMarkup()
-    admin_markup.add(
-        types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}"),
+    # بناء أزرار الأدمن بشكل منفصل لتفادي أخطاء الأقواس نهائياً
+    btn_approve = types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}")
