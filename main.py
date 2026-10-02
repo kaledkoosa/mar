@@ -6,7 +6,6 @@ import threading
 import json
 from flask import Flask, render_template_string, request, jsonify
 
-# تفعيل محرك Flask
 app = Flask('')
 
 @app.route('/shop/<int:user_id>')
@@ -22,7 +21,6 @@ def shop_interface(user_id):
     html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
     return render_template_string(html_content)
 
-# استقبال البيانات من تطبيق الويب وتشغيلها في Thread منفصل لضمان الاستجابة الفورية
 @app.route('/api/action', methods=['POST'])
 def handle_api_action():
     data = request.json
@@ -35,49 +33,29 @@ def handle_api_action():
         update_user_balance(user_id, -item["price"])
         threading.Thread(target=send_buy_confirmation, args=(user_id, item)).start()
         
-    elif action == "deposit":
-        threading.Thread(target=send_deposit_methods, args=(user_id,)).start()
-        
     return jsonify({"status": "success"})
 
 def send_buy_confirmation(user_id, item):
     try:
-        msg = bot.send_message(user_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} دولار من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
-        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
+        msg = bot.send_message(user_id, f"🔄 تم تأكيد شراء {item['name']} بنجاح.\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم شحن الباقة لك:")
+        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
     except Exception as e:
-        print(f"Error sending buy msg: {e}")
-
-def send_deposit_methods(user_id):
-    try:
-        bot.send_message(user_id, PAYMENT_METHODS, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Error sending deposit msg: {e}")
+        print(f"Error: {e}")
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر يعملان بأعلى كفاءة!"
+    return "بوابة الدفع والتطبيق المصغر مستقران ويعملان بأعلى كفاءة!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# إعداد البوت مع تفعيل الـ Threaded لضمان عمل الواجهات مع المحادثات بالتوازي
+# تأكد من إعداد التوكن ومعرف الإدارة في لوحة Render
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
-
-PAYMENT_METHODS = (
-    "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
-    "1️⃣ **شام كاش (Sham Cash):**\n"
-    "📌 عنوان المحفظة الخاص بك:\n"
-    "`fb804dc6f448c3a64d9d3ad96be32984`\n\n"
-    "2️⃣ **عملة رقمية USDT (شبكة BEP20):**\n"
-    "🌐 العنوان:\n"
-    "`0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`\n\n"
-    "📌 قم بتحويل المبلغ، ثم أرسل صورة إيصال التحويل (وصل الدفع) هنا فوراً في الشات."
-)
 
 PRICES = {
     "pubg_60": {"name": "60 شدة PUBG", "price": 1.0},
@@ -124,60 +102,20 @@ def send_welcome(message):
     balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر الشحن الفوري!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح المتجر المطور:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح واجهة المتجر وبوابة الشحن مدمجة:"
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call):
-    chat_id = call.message.chat.id
-    data = call.data
-    
-    if data.startswith("deposit_approve_"):
-        customer_id = data.replace("deposit_approve_", "")
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            types.InlineKeyboardButton("+1\$", callback_data=f"add_1_{customer_id}"),
-            types.InlineKeyboardButton("+5\$", callback_data=f"add_5_{customer_id}"),
-            types.InlineKeyboardButton("+10\$", callback_data=f"add_10_{customer_id}"),
-            types.InlineKeyboardButton("+20\$", callback_data=f"add_20_{customer_id}")
-        )
-        bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
-        
-    elif data.startswith("add_"):
-        parts = data.split("_")
-        amount = float(parts[1])
-        customer_id = int(parts[2])
-        update_user_balance(customer_id, amount)
-        new_balance = get_user_balance(customer_id)
-        try:
-            bot.send_message(customer_id, f"🎉 تم إضافة {amount} دولار لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} دولار")
-        except:
-            pass
-        bot.edit_message_caption(caption=f"✅ تم شحن {amount} دولار للمستخدم {customer_id}.\n💰 رصيده الآن: {new_balance} دولار", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
-        
-    elif data.startswith("deposit_reject_"):
-        customer_id = int(data.replace("deposit_reject_", ""))
-        try:
-            bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة.")
-        except:
-            pass
-        bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
 @bot.message_handler(content_types=['photo'])
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة الفورية...")
+    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها من قبل الإدارة لإضافة الرصيد لحسابك الفوري.")
     
-    markup = types.InlineKeyboardMarkup()
-    markup.add(
-        types.InlineKeyboardButton("✅ موافقة", callback_data=f"deposit_approve_{user_id}"),
-        types.InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{user_id}")
-    )
+    # إرسال التنبيه للأدمن يدوياً للتأكيد
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل شحن جديد:\n🆔 ID: {user_id}\n👤 الاسم: {message.from_user.first_name}", reply_markup=markup)
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل شحن إيصال جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nيرجى استخدام الأوامر اليدوية أو لوحة التحكم لشحن حسابه عبر نظام /admin.")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -185,5 +123,5 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("Server is starting...")
+    print("Mini App Server is fully loaded...")
     bot.infinity_polling()
