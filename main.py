@@ -3,6 +3,7 @@ from telebot import types
 import sqlite3
 import os
 import threading
+import json
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
@@ -16,12 +17,11 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حقن بيانات المستخدم والرصيد الحية بشكل سليم داخل جافا سكريبت
     html_content = html_content.replace('"USER_ID_PLACEHOLDER"', f'"{user_id}"')
     html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
     return render_template_string(html_content)
 
-# استقبال أوامر الأزرار والعمليات الحسابية من الواجهة بشكل فوري دون مشاكل تعليق
+# استقبال البيانات من تطبيق الويب وتشغيلها في Thread منفصل لضمان الفورية وعدم تعليق الشبكة
 @app.route('/api/action', methods=['POST'])
 def handle_api_action():
     data = request.json
@@ -32,15 +32,26 @@ def handle_api_action():
         item_key = data.get("item")
         item = PRICES[item_key]
         update_user_balance(user_id, -item["price"])
-        
-        msg = bot.send_message(user_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} دولار من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
-        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
+        threading.Thread(target=send_buy_confirmation, args=(user_id, item)).start()
         
     elif action == "deposit":
-        msg = bot.send_message(user_id, PAYMENT_METHODS)
-        bot.register_next_step_handler(msg, process_deposit_receipt)
+        threading.Thread(target=send_deposit_methods, args=(user_id,)).start()
         
     return jsonify({"status": "success"})
+
+def send_buy_confirmation(user_id, item):
+    try:
+        msg = bot.send_message(user_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']} دولار من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
+        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
+    except Exception as e:
+        print(f"Error sending buy msg: {e}")
+
+def send_deposit_methods(user_id):
+    try:
+        msg = bot.send_message(user_id, PAYMENT_METHODS, parse_mode="Markdown")
+        bot.register_next_step_handler(msg, process_deposit_receipt)
+    except Exception as e:
+        print(f"Error sending deposit msg: {e}")
 
 @app.route('/')
 def home():
@@ -56,10 +67,12 @@ RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# --- تم تحديث عنوان شام كاش الخاص بك هنا بنجاح ---
 PAYMENT_METHODS = (
     "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
     "1️⃣ **شام كاش (Sham Cash):**\n"
-    "📞 رقم المحفظة: `09xxxxxxxx`\n\n"
+    "📌 عنوان المحفظة الخاص بك:\n"
+    "`fb804dc6f448c3a64d9d3ad96be32984`\n\n"
     "2️⃣ **عملة رقمية USDT (شبكة BEP20):**\n"
     "🌐 العنوان:\n"
     "`0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`\n\n"
@@ -111,7 +124,7 @@ def send_welcome(message):
     balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر الشحن الفوري الحقيقي!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح المتجر المطور للتطبيقات المصغرة:"
+    welcome_text = f"👋 أهلاً بك في متجر الشحن الفوري!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح المتجر المطور:"
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
@@ -142,7 +155,7 @@ def callback_inline(call):
             bot.send_message(customer_id, f"🎉 تم إضافة {amount} دولار لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} دولار")
         except:
             pass
-        bot.edit_message_caption(caption=f"✅ تم شحن {amount} دولار للمخدم {customer_id}.\n💰 رصيده الآن: {new_balance} دولار", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+        bot.edit_message_caption(caption=f"✅ تم شحن {amount} دولار للمستخدم {customer_id}.\n💰 رصيده الآن: {new_balance} دولار", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
         
     elif data.startswith("deposit_reject_"):
         customer_id = int(data.replace("deposit_reject_", ""))
@@ -155,7 +168,7 @@ def callback_inline(call):
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     if message.content_type != 'photo':
-        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة الإيصال الدفع البنكي الصحيح.")
+        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة إيصال الدفع.")
         return
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة...")
