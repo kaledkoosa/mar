@@ -84,7 +84,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تصحيح قراءة الصافي من قاعدة البيانات لـ SQLite
+        balance = row[0]
     conn.close()
     return float(balance)
 
@@ -104,7 +104,39 @@ def get_total_users():
     conn.close()
     return count
 
-# --- إعادة بناء أمر التحكم للأدمن الفوري وتفعيله بنجاح ---
+# --- أمر تزويد الرصيد للمستخدمين يدوياً عبر الأدمن ---
+@bot.message_handler(commands=['pay'])
+def pay_user_balance(message):
+    user_id = message.from_user.id
+    if user_id == ADMIN_CHAT_ID:
+        try:
+            # تفكيك الأمر المكتوب (مثال: /pay 5522345582 10)
+            parts = message.text.split()
+            if len(parts) < 3:
+                bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
+                return
+            
+            target_id = int(parts[1])
+            amount = float(parts[2])
+            
+            # تحديث الرصيد في قاعدة البيانات
+            update_user_balance(target_id, amount)
+            new_balance = get_user_balance(target_id)
+            
+            # إشعار الأدمن بنجاح العملية
+            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            
+            # إرسال تنبيه فوري وبشارة للمستخدم برصيده الجديد
+            try:
+                bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            except:
+                bot.send_message(message.chat.id, "⚠️ تم تحديث الرصيد بالسيرفر، لكن تعذر إرسال رسالة للمستخدم لأنه قد يكون حظر البوت.")
+                
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
+    else:
+        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير المتجر فقط.")
+
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     user_id = message.from_user.id
@@ -113,7 +145,11 @@ def admin_panel(message):
         admin_text = (
             f"👑 **لوحة تحكم الإدارة الرسمية لمتجر عبد البصير** 👑\n\n"
             f"👥 إجمالي عدد المستخدمين المسجلين: `{total_users}` مستخدم.\n\n"
-            f"البوت مدمج بالكامل مع التطبيق المصغر، لاستضافة وتزويد الرصيد اليدوي استخدم لوحة تحكم السيرفر."
+            f"💡 **طريقة شحن رصيد مستخدم:**\n"
+            f"اكتب في الشات:\n"
+            f"`/pay [ID المستخدم] [المبلغ]`\n\n"
+            f"مثال لإضافة 10 دولار:\n"
+            f"`/pay 5522345582 10`"
         )
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
     else:
@@ -137,7 +173,7 @@ def process_deposit_receipt(message):
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلتعديل رصيد العميل مباشرة.")
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الحساب استخدم:\n`/pay {user_id} [المبلغ]`")
     except Exception as e:
         print(f"Error: {e}")
 
