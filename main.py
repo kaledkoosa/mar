@@ -44,13 +44,12 @@ def send_buy_confirmation(user_id, item):
 
 @app.route('/')
 def home():
-    return "بوابة الدفع والتطبيق المصغر مستقران ويعملان بأعلى كفاءة!"
+    return "بوابة التحكم والسيرفر يعملان بنجاح!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# تأكد من إعداد التوكن ومعرف الإدارة في لوحة Render
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -85,7 +84,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]
+        balance = row[0]  # تصحيح قراءة الصافي من قاعدة البيانات لـ SQLite
     conn.close()
     return float(balance)
 
@@ -95,6 +94,30 @@ def update_user_balance(user_id, amount):
     cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
     conn.commit()
     conn.close()
+
+def get_total_users():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    row = cursor.fetchone()
+    count = row[0] if row else 0
+    conn.close()
+    return count
+
+# --- إعادة بناء أمر التحكم للأدمن الفوري وتفعيله بنجاح ---
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    user_id = message.from_user.id
+    if user_id == ADMIN_CHAT_ID:
+        total_users = get_total_users()
+        admin_text = (
+            f"👑 **لوحة تحكم الإدارة الرسمية لمتجر عبد البصير** 👑\n\n"
+            f"👥 إجمالي عدد المستخدمين المسجلين: `{total_users}` مستخدم.\n\n"
+            f"البوت مدمج بالكامل مع التطبيق المصغر، لاستضافة وتزويد الرصيد اليدوي استخدم لوحة تحكم السيرفر."
+        )
+        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير المتجر فقط.")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -111,11 +134,10 @@ def send_welcome(message):
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها من قبل الإدارة لإضافة الرصيد لحسابك الفوري.")
+    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     
-    # إرسال التنبيه للأدمن يدوياً للتأكيد
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل شحن إيصال جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nيرجى استخدام الأوامر اليدوية أو لوحة التحكم لشحن حسابه عبر نظام /admin.")
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلتعديل رصيد العميل مباشرة.")
     except Exception as e:
         print(f"Error: {e}")
 
