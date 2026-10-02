@@ -3,14 +3,31 @@ from telebot import types
 import sqlite3
 import os
 import threading
-from flask import Flask
+import json
+from flask import Flask, render_template_string
 
-# --- إعداد سيرفر Flask لمنع السيرفر من النوم ---
+# --- إعداد سيرفر Flask لاستضافة التطبيق المصغر ومنع النوم ---
 app = Flask('')
+
+# قراءة واجهة index.html المرفقة بالمشروع وعرضها ديناميكياً
+@app.route('/shop/<int:user_id>')
+def shop_interface(user_id):
+    # جلب رصيد المستخدم الحالي لعرضه مباشرة في التطبيق المصغر
+    balance = get_user_balance(user_id)
+    
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+    except:
+        return "خطأ: لم يتم العثور على ملف index.html في سيرفر المشروع."
+        
+    # تمرير الرصيد للـ Web App عبر الـ URL Query
+    html_content = html_content.replace("urlParams.get('balance') || '0.0'", f"'{balance}'")
+    return render_template_string(html_content)
 
 @app.route('/')
 def home():
-    return "البوت يعمل بنجاح وبشكل مستمر 24/7!"
+    return "التطبيق المصغر والسيرفر يعملان بنجاح 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -19,10 +36,11 @@ def run_flask():
 # --- إعدادات الحماية والأمان لبوت التيليجرام ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
+# رابط مشروعك على ريندر (مثال: https://onrender.com) ليفتح التطبيق المصغر من خلاله
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# --- معلومات الدفع ---
 PAYMENT_METHODS = (
     "💳 **طرق الشحن المتوفرة حالياً:**\n\n"
     "1️⃣ **شام كاش (Sham Cash):**\n"
@@ -30,8 +48,7 @@ PAYMENT_METHODS = (
     "2️⃣ **عملة رقمية USDT (شبكة BEP20):**\n"
     "🌐 العنوان (Address):\n"
     "`0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`\n\n"
-    "⚠️ **ملاحظة هامة للشبكة:** يرجى التأكد من إرسال العملة عبر شبكة **BEP20 (Binance Smart Chain)** حصراً لتجنب ضياع الأموال.\n\n"
-    "📌 قم بتحويل المبلغ الذي تريده، ثم أرسل **صورة إيصال التحويل (وصل الدفع)** هنا في الشات فوراً ليتم مراجعة طلبك وإضافة الرصيد لحسابك."
+    "📌 قم بتحويل المبلغ، ثم أرسل **صورة إيصال التحويل** هنا فوراً."
 )
 
 PRICES = {
@@ -41,18 +58,12 @@ PRICES = {
     "ff_310": {"name": "310 جوهرة Free Fire", "price": 3.0}
 }
 
-# --- إعداد قاعدة البيانات على القرص الثابت لـ Render ---
 DB_PATH = "/data/manual_shop.db" if os.path.exists("/data") else "manual_shop.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            balance REAL DEFAULT 0.0
-        )
-    ''')
+    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)')
     conn.commit()
     conn.close()
 
@@ -68,9 +79,9 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تم تعديلها هنا لأخذ الرقم الصافي من المصفوفة
+        balance = row[0]
     conn.close()
-    return balance
+    return float(balance)
 
 def update_user_balance(user_id, amount):
     conn = sqlite3.connect(DB_PATH)
@@ -79,144 +90,101 @@ def update_user_balance(user_id, amount):
     conn.commit()
     conn.close()
 
-def get_total_users():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    row = cursor.fetchone()
-    count = row[0] if row else 0  # تم تعديلها هنا لأخذ الرقم الصافي لتفادي المشاكل
-    conn.close()
-    return count
-
-# --- أمر التحكم الخاص بالأدمن /admin ---
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        total_users = get_total_users()
-        admin_text = (
-            f"👑 **لوحة تحكم الإدارة الرسمية** 👑\n\n"
-            f"👥 إجمالي عدد المشتركين في البوت: `{total_users}` مستخدم.\n\n"
-            f"البوت يعمل الآن بنظام الأزرار التلقائية الفورية وحل مشكلة عدم الاستجابة المستمرة للشبكة."
-        )
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-    else:
-        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير البوت فقط.")
-
 # --- أمر البدء /start ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
+    # بناء رابط التطبيق المصغر الديناميكي الخاص بالمستخدم
+    web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
+    
     welcome_text = (
-        f"👋 أهلاً بك في بوت شحن الألعاب الأسرع!\n\n"
-        f"💰 رصيدك الحالي: {balance} $\n\n"
-        f"الرجاء اختيار اللعبة المراد شحنها أو شحن رصيد حسابك:"
+        f"👋 أهلاً بك في متجر شحن الألعاب الفوري الجديد!\n\n"
+        f"💰 رصيدك الحالي: {balance} \$\n\n"
+        f"اضغط على الزر أدناه لفتح المتجر كمكتبة ألعاب وتطبيق مصغر تفاعلي:"
     )
     
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("🎮 ببجي موبايل (PUBG)", callback_data="menu_pubg"),
-        types.InlineKeyboardButton("🔥 فري فاير (Free Fire)", callback_data="menu_ff"),
-        types.InlineKeyboardButton("💳 شحن رصيد الحساب", callback_data="menu_deposit")
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    # إضافة زر التطبيق المصغر المدمج بداخل الكيبورد الرئيسي للعميل
+    markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- معالجة الأزرار الشفافة التلقائية الفورية ---
+# --- استقبال البيانات المرسلة من التطبيق المصغر (Web App Data) ---
+@bot.message_handler(content_types=['web_app_data'])
+def handle_web_app_data(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    try:
+        data = json.loads(message.web_app_data.data)
+        action = data.get("action")
+        
+        if action == "buy":
+            item_key = data.get("item")
+            item = PRICES[item_key]
+            
+            # خصم السعر وتأكيد الطلب
+            update_user_balance(user_id, -item["price"])
+            msg = bot.send_message(chat_id, f"🔄 تم تأكيد شراء {item['name']} وخصم {item['price']}\$ من رصيدك بنجاح.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة لتوصيل شحنتك فوراً:")
+            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن يدوياً من الإدارة."))
+            
+        elif action == "deposit":
+            msg = bot.send_message(chat_id, PAYMENT_METHODS, parse_mode="Markdown")
+            bot.register_next_step_handler(msg, process_deposit_receipt)
+            
+    except Exception as e:
+        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة الطلب من التطبيق المصغر.")
+
+# --- الأزرار التفاعلية للأدمن ---
 @bot.callback_query_handler(func=lambda call: True)
 def callback_inline(call):
-    user_id = call.from_user.id
     chat_id = call.message.chat.id
     
-    if call.data == "menu_pubg":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for key, item in PRICES.items():
-            if "pubg" in key:
-                markup.add(types.InlineKeyboardButton(f"{item['name']} ({item['price']} $)", callback_data=f"buy_{key}"))
-        markup.add(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu"))
-        bot.edit_message_text("اختر باقة الشدات المناسبة لـ PUBG:", chat_id, call.message.message_id, reply_markup=markup)
-        
-    elif call.data == "menu_ff":
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        for key, item in PRICES.items():
-            if "ff" in key:
-                markup.add(types.InlineKeyboardButton(f"{item['name']} ({item['price']} $)", callback_data=f"buy_{key}"))
-        markup.add(types.InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu"))
-        bot.edit_message_text("اختر باقة الجواهر المناسبة لـ Free Fire:", chat_id, call.message.message_id, reply_markup=markup)
-
-    elif call.data == "main_menu":
-        balance = get_user_balance(user_id)
-        welcome_text = f"💰 رصيدك الحالي: {balance} $\n\nالرجاء اختيار اللعبة أو الخدمة:"
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            types.InlineKeyboardButton("🎮 ببجي موبايل (PUBG)", callback_data="menu_pubg"),
-            types.InlineKeyboardButton("🔥 فري فاير (Free Fire)", callback_data="menu_ff"),
-            types.InlineKeyboardButton("💳 شحن رصيد الحساب", callback_data="menu_deposit")
-        )
-        bot.edit_message_text(welcome_text, chat_id, call.message.message_id, reply_markup=markup)
-
-    elif call.data == "menu_deposit":
-        msg = bot.send_message(chat_id, PAYMENT_METHODS, parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_deposit_receipt)
-
-    elif call.data.startswith("buy_"):
-        item_key = call.data.replace("buy_", "")
-        item = PRICES[item_key]
-        balance = get_user_balance(user_id)
-        
-        if balance >= item["price"]:
-            msg = bot.send_message(chat_id, f"🔄 لقد اخترت {item['name']}.\nالرجاء إرسال الـ ID الخاص بحسابك في اللعبة الآن:")
-            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID الخاص بك بنجاح، وجاري مراجعة الطلب وتسليمه من قبل الإدارة الفورية."))
-        else:
-            bot.answer_callback_query(call.id, "❌ رصيدك غير كافٍ! يرجى شحن حسابك أولاً بالضغط على 'شحن رصيد الحساب'.", show_alert=True)
-
-    elif call.data.startswith("deposit_approve_"):
+    if call.data.startswith("deposit_approve_"):
         customer_id = int(call.data.replace("deposit_approve_", ""))
         markup = types.InlineKeyboardMarkup(row_width=3)
         markup.add(
-            types.InlineKeyboardButton("+1 $", callback_data=f"addamt_1_{customer_id}"),
-            types.InlineKeyboardButton("+5 $", callback_data=f"addamt_5_{customer_id}"),
-            types.InlineKeyboardButton("+10 $", callback_data=f"addamt_10_{customer_id}"),
-            types.InlineKeyboardButton("+20 $", callback_data=f"addamt_20_{customer_id}"),
-            types.InlineKeyboardButton("+50 $", callback_data=f"addamt_50_{customer_id}"),
-            types.InlineKeyboardButton("❌ إلغاء العملية", callback_data="main_menu")
-        )
-        bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم بنقرة زر واحدة فوراً:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
-
-    elif call.data.startswith("addamt_"):
-        _, amount_str, customer_id = call.data.split("_")
-        amount = float(amount_str)
-        customer_id = int(customer_id)
+            types.InlineKeyboardButton("+1 \$", callback_data=f"addamt_1_{customer_id}"),
+            types.InlineKeyboardButton("+5 \$", callback_data=f"addamt_5_{customer_id}"),
+            types.InlineKeyboardButton("+10 \$", callback_data=f"addamt_10_{customer_id}"),
+            types.InlineKeyboardButton("+20 \(", callback_data=f"addamt_20_{customer_id}")         )         bot.edit_message_caption(caption="حدد المبلغ المراد شحنه لحساب المستخدم:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)      elif call.data.startswith("addamt_"):         _, amount_str, customer_id = call.data.split("_")         amount = float(amount_str)         customer_id = int(customer_id)                  update_user_balance(customer_id, amount)         new_balance = get_user_balance(customer_id)                  try:             bot.send_message(customer_id, f"🎉 تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح!\n💰 رصيدك الحالي أصبح: {new_balance} \)")
+        except:
+            pass
         
-        update_user_balance(customer_id, amount)
-        new_balance = get_user_balance(customer_id)
-        
-        if customer_id != ADMIN_CHAT_ID:
-            try:
-                bot.send_message(customer_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} $** لحسابك في البوت بنجاح.\n💰 رصيدك الحالي أصبح: {new_balance} $")
-            except:
-                pass
-        
-        bot.edit_message_caption(caption=f"✅ تم شحن {amount}$ بنجاح فوري للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+        bot.edit_message_caption(caption=f"✅ تم شحن {amount}\$ بنجاح للمستخدم `{customer_id}`!\n💰 رصيده الحالي الآن أصبح: {new_balance}\$", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
     elif call.data.startswith("deposit_reject_"):
         customer_id = int(call.data.replace("deposit_reject_", ""))
         try:
-            bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة. يرجى التأكد من تفاصيل العملية أو التواصل مع الدعم للشكاوى.")
-            bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id} وإبلاغه بنجاح.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+            bot.send_message(customer_id, "❌ نعتذر منك، تم رفض إيصال الشحن الخاص بك من قبل الإدارة.")
         except:
-            bot.edit_message_caption(caption=f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
+            pass
+        bot.edit_message_caption(caption=f"❌ تم رفض إيصال المستخدم {customer_id} بنجاح.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
-# --- دالة استلام إيصال الشحن وإرساله للأدمن ---
 def process_deposit_receipt(message):
     user_id = message.from_user.id
-    
     if message.content_type != 'photo':
-        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال **صورة** واضحة للإيصال. يرجى الضغط على زر الشحن والمحاولة مجدداً.")
+        bot.send_message(message.chat.id, "❌ خطأ! يجب إرسال صورة الإيصال. يرجى إعادة المحاولة.")
         return
 
     photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
+    bot.send_message(message.chat.id, "⏳ جاري مراجعة إيصالك من قبل الإدارة الفورية...")
     
-    btn_approve = types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}")
+    btn_approve = types.InlineKeyboardButton("✅ موافقة", callback_data=f"deposit_approve_{user_id}")
+    btn_reject = types.InlineKeyboardButton("❌ رفض", callback_data=f"deposit_reject_{user_id}")
+    admin_markup = types.InlineKeyboardMarkup()
+    admin_markup.add(btn_approve, btn_reject)
+    
+    try:
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID: `{user_id}`\n👤 الاسم: {message.from_user.first_name}", reply_markup=admin_markup, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Error sending to admin: {e}")
+
+if __name__ == "__main__":
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    print("Mini App Server is running successfully...")
+    bot.infinity_polling()
