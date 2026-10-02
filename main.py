@@ -209,7 +209,7 @@ def callback_inline(call):
         except:
             bot.edit_message_caption(caption=f"⚠️ تم الرفض في السيرفر لكن تعذر مراسلة المستخدم {customer_id}.", chat_id=chat_id, message_id=call.message.message_id, reply_markup=None)
 
-# --- دالة استلام إيصال الشحن وإرساله للأدمن بعد حل مشكلة الأقواس ---
+# --- دالة استلام إيصال الشحن وإرساله للأدمن ---
 def process_deposit_receipt(message):
     user_id = message.from_user.id
     
@@ -220,5 +220,6 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ جاري رفع إيصالك ومراجعته من قبل الإدارة. سيتم إضافة الرصيد لحسابك فور التأكيد.")
     
-    # بناء أزرار الأدمن بشكل منفصل لتفادي أخطاء الأقواس نهائياً
+    # بناء أزرار الأدمن بشكل منفصل
+    markup = types.InlineKeyboardMarkup(row_width=2)
     btn_approve = types.InlineKeyboardButton("✅ موافقة وتحديد الرصيد", callback_data=f"deposit_approve_{user_id}")
