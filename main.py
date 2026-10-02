@@ -68,7 +68,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تم تصحيح الخطأ هنا لأخذ الرقم المباشر من الـ Tuple
+        balance = row[0]  # تم تعديلها هنا لأخذ الرقم الصافي من المصفوفة
     conn.close()
     return balance
 
@@ -84,7 +84,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0  # تم تصحيح طريقة استخراج العدد الكلي للمستخدمين
+    count = row[0] if row else 0  # تم تعديلها هنا لأخذ الرقم الصافي لتفادي المشاكل
     conn.close()
     return count
 
