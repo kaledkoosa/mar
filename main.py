@@ -17,9 +17,9 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # تمرير الرصيد كقيمة رقمية صافية تماماً (مثل 50.0) لمتصفح تيليجرام
-    html_content = html_content.replace('"USER_ID_PLACEHOLDER"', f'"{user_id}"')
-    html_content = html_content.replace('"USER_BALANCE_PLACEHOLDER"', f'"{balance}"')
+    # تصحيح علامات الاقتباس لضمان نجاح الاستبدال في المتصفح 100%
+    html_content = html_content.replace("USER_ID_PLACEHOLDER", str(user_id))
+    html_content = html_content.replace("USER_BALANCE_PLACEHOLDER", str(balance))
     return render_template_string(html_content)
 
 @app.route('/api/action', methods=['POST'])
@@ -75,7 +75,6 @@ def init_db():
 
 init_db()
 
-# --- تم تصحيح استخراج الرقم الصافي [0] لمنع التعارض والانهيار نهائياً ---
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -86,7 +85,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # جلب الرقم المباشر (مثل 50.0) بدون أقواس الفاصلة الزائدة
+        balance = row[0] # جلب الرقم الصافي مباشرة بدون تعقيدات المصفوفات
     conn.close()
     return float(balance)
 
@@ -102,7 +101,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0  # استخراج العدد الصافي مباشرة
+    count = row[0] if row else 0
     conn.close()
     return count
 
@@ -122,7 +121,7 @@ def pay_user_balance(message):
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
             
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
             
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
