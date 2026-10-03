@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير للشحن</title>
-    <!-- استدعاء سكربت تيليجرام الرسمي -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -161,12 +160,14 @@
     </div>
 
     <script>
-        // تهيئة تطبيق تيليجرام المدمج
         const tg = window.Telegram.WebApp;
-        tg.ready(); // السطر الأهم لإعطاء الصلاحية الفورية للمتصفح المدمج وإجبار الأزرار على العمل
+        tg.ready();
         tg.expand();
 
         const REAL_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
+        
+        // استخراج الـ user_id تلقائياً من بيانات تيليجرام الموثقة
+        const user_id = tg.initDataUnsafe?.user?.id || "USER_ID_MARKER";
 
         function copyWallet(elementId) {
             const addressText = document.getElementById(elementId).innerText;
@@ -192,10 +193,20 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // إرسال البيانات فوراً بداخل الشات وإغلاق النافذة بنجاح حتمي
-                    const payload = { action: "buy", item: itemKey };
-                    tg.sendData(JSON.stringify(payload));
-                    tg.close();
+                    // إرسال الطلب المباشر عبر API السيرفر وتخطي بروتوكول الشات القديم المعطل بالهواتف
+                    fetch('/api/action', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({user_id: user_id, action: "buy", item: itemKey})
+                    }).then(response => {
+                        if (response.ok) {
+                            tg.close();
+                        } else {
+                            tg.showAlert("❌ حدث خطأ في السيرفر أثناء معالجة الشراء.");
+                        }
+                    }).catch(() => {
+                        tg.showAlert("❌ فشل الاتصال بالسيرفر.");
+                    });
                 }
             });
         }
