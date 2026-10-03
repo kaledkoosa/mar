@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>متجر عبد البصير للشحن الفوري</title>
+    <title>متجر عبد البصير للشحن</title>
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -109,7 +109,7 @@
     </div>
 
     <div class="balance-card">
-        💰 رصيدك الحالي: <span id="user-balance">0.0</span> $
+        💰 رصيدك الحالي: <span id="user-balance">USER_BALANCE_MARKER</span> $
     </div>
 
     <div class="section-title">📦 باقات ببجي موبايل (PUBG)</div>
@@ -163,11 +163,8 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // السطور البرمجية المستهدفة للاستبدال الفوري من السيرفر بدون علامات اقتباس معقدة
-        const CURRENT_USER_ID = "USER_ID_MARKER";
-        const REAL_BALANCE = "USER_BALANCE_MARKER";
-        
-        document.getElementById('user-balance').innerText = REAL_BALANCE;
+        // قراءة الرصيد الممرر مباشرة من علامة الاستبدال
+        const REAL_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
 
         function copyWallet(elementId) {
             const addressText = document.getElementById(elementId).innerText;
@@ -179,22 +176,24 @@
         }
 
         function buyItem(itemKey, price) {
+            if (REAL_BALANCE < price) {
+                tg.showAlert("❌ رصيدك الحالي غير كافٍ! يرجى الشحن أولاً عبر المحفظة بالأسفل.");
+                return;
+            }
+
             tg.showPopup({
                 title: 'تأكيد عملية الشراء',
-                message: 'هل ترغب في تأكيد الطلب وشراء الباقة الآن؟',
+                message: 'هل ترغب في تأكيد الطلب وخصم القيمة وشراء الباقة الآن؟',
                 buttons: [
                     {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
                     {id: 'cancel', type: 'destructive', text: 'إلغاء'}
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    fetch('/api/action', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({user_id: CURRENT_USER_ID, action: "buy", item: itemKey})
-                    }).then(() => {
-                        tg.close();
-                    });
+                    // الدمج الكلي: إرسال البيانات مباشرة بداخل الشات عبر بروتوكول تيليجرام الرسمي
+                    const payload = { action: "buy", item: itemKey };
+                    tg.sendData(JSON.stringify(payload));
+                    tg.close();
                 }
             });
         }
