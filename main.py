@@ -4,7 +4,7 @@ import sqlite3
 import os
 import threading
 import json
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string
 
 app = Flask('')
 
@@ -17,35 +17,13 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # عملية استبدال مطابقة ومثالية 100% للعلامات المحددة في ملف html
-    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
+    # حل مشكلة الصفر نهائياً: استبدال الكلمة المفتاحية بالرصيد الصافي مباشرة داخل نص الـ HTML
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
-@app.route('/api/action', methods=['POST'])
-def handle_api_action():
-    data = request.json
-    user_id = int(data.get("user_id"))
-    action = data.get("action")
-    
-    if action == "buy":
-        item_key = data.get("item")
-        item = PRICES[item_key]
-        update_user_balance(user_id, -item["price"])
-        threading.Thread(target=send_buy_confirmation, args=(user_id, item)).start()
-        
-    return jsonify({"status": "success"})
-
-def send_buy_confirmation(user_id, item):
-    try:
-        msg = bot.send_message(user_id, f"🔄 تم تأكيد شراء {item['name']} بنجاح.\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم شحن الباقة لك:")
-        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
-    except Exception as e:
-        print(f"Error: {e}")
-
 @app.route('/')
 def home():
-    return "بوابة التحكم والسيرفر يعملان بنجاح ومزامنة الرصيد نشطة!"
+    return "السيرفر والتطبيق المصغر المدمج كلياً يعملان بنجاح!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -85,7 +63,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # استخراج العنصر الرقمي الأول الصافي والمجرد بنجاح (مثال: 50.0)
+        balance = row[0]  # استخراج الرقم العشري الصافي والمجرد من الـ Tuple بشكل دقيق ومضمون
     conn.close()
     return float(balance)
 
@@ -104,6 +82,31 @@ def get_total_users():
     count = row[0] if row else 0
     conn.close()
     return count
+
+# --- استقبال البيانات كلياً عبر بروتوكول شات تيليجرام المدمج ---
+@bot.message_handler(content_types=['web_app_data'])
+def handle_web_app_data(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    try:
+        # تفكيك البيانات القادمة من الـ Web App المدمج بالشات
+        data = json.loads(message.web_app_data.data)
+        action = data.get("action")
+        
+        if action == "buy":
+            item_key = data.get("item")
+            item = PRICES[item_key]
+            
+            # تنفيذ عملية الخصم المباشر
+            update_user_balance(user_id, -item["price"])
+            new_balance = get_user_balance(user_id)
+            
+            msg = bot.send_message(chat_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
+            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
+            
+    except Exception as e:
+        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء من المتجر المدمج.")
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -143,13 +146,9 @@ def admin_panel(message):
             f"👥 إجمالي عدد المستخدمين المسجلين: `{total_users}` مستخدم.\n\n"
             f"💡 **طريقة شحن رصيد مستخدم:**\n"
             f"اكتب في الشات:\n"
-            f"`/pay [ID المستخدم] [المبلغ]`\n\n"
-            f"مثال لإضافة 10 دولار:\n"
-            f"`/pay 5522345582 10`"
+            f"`/pay [ID المستخدم] [المبلغ]`"
         )
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-    else:
-        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير المتجر فقط.")
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -157,7 +156,7 @@ def send_welcome(message):
     balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح واجهة المتجر وبوابة الشحن مدمجة:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح واجهة المتجر وبوابة الشحن المدمجة كلياً:"
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
@@ -167,7 +166,6 @@ def process_deposit_receipt(message):
     user_id = message.from_user.id
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
-    
     try:
         bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الحساب استخدم:\n`/pay {user_id} [المبلغ]`")
     except Exception as e:
@@ -177,5 +175,5 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("Mini App Server is fully loaded...")
+    print("Integrated Mini App Server is running...")
     bot.infinity_polling()
