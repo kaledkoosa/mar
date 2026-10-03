@@ -17,9 +17,9 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # تصحيح علامات الاقتباس لضمان نجاح الاستبدال في المتصفح 100%
-    html_content = html_content.replace("USER_ID_PLACEHOLDER", str(user_id))
-    html_content = html_content.replace("USER_BALANCE_PLACEHOLDER", str(balance))
+    # عملية استبدال مطابقة ومثالية 100% للعلامات المحددة في ملف html
+    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
+    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
 @app.route('/api/action', methods=['POST'])
@@ -85,7 +85,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0] # جلب الرقم الصافي مباشرة بدون تعقيدات المصفوفات
+        balance = row[0]  # استخراج العنصر الرقمي الأول الصافي والمجرد بنجاح (مثال: 50.0)
     conn.close()
     return float(balance)
 
@@ -121,7 +121,7 @@ def pay_user_balance(message):
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
             
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
             
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
