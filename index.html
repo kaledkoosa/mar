@@ -163,8 +163,9 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        const CURRENT_USER_ID = "USER_ID_PLACEHOLDER";
-        const REAL_BALANCE = "USER_BALANCE_PLACEHOLDER";
+        // السطور البرمجية المستهدفة للاستبدال الفوري من السيرفر بدون علامات اقتباس معقدة
+        const CURRENT_USER_ID = "USER_ID_MARKER";
+        const REAL_BALANCE = "USER_BALANCE_MARKER";
         
         document.getElementById('user-balance').innerText = REAL_BALANCE;
 
@@ -178,7 +179,6 @@
         }
 
         function buyItem(itemKey, price) {
-            // تم إلغاء حظر رصيد الـ 0.0 للسماح لك باختبار فاعلية وضغط الأزرار بنجاح الآن
             tg.showPopup({
                 title: 'تأكيد عملية الشراء',
                 message: 'هل ترغب في تأكيد الطلب وشراء الباقة الآن؟',
