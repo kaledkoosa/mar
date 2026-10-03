@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير للشحن</title>
+    <!-- استدعاء سكربت تيليجرام الرسمي -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -160,10 +161,11 @@
     </div>
 
     <script>
+        // تهيئة تطبيق تيليجرام المدمج
         const tg = window.Telegram.WebApp;
+        tg.ready(); // السطر الأهم لإعطاء الصلاحية الفورية للمتصفح المدمج وإجبار الأزرار على العمل
         tg.expand();
 
-        // قراءة الرصيد الممرر مباشرة من علامة الاستبدال
         const REAL_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
 
         function copyWallet(elementId) {
@@ -190,7 +192,7 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // الدمج الكلي: إرسال البيانات مباشرة بداخل الشات عبر بروتوكول تيليجرام الرسمي
+                    // إرسال البيانات فوراً بداخل الشات وإغلاق النافذة بنجاح حتمي
                     const payload = { action: "buy", item: itemKey };
                     tg.sendData(JSON.stringify(payload));
                     tg.close();
