@@ -48,7 +48,7 @@ def handle_api_action():
 
 def send_buy_msg(user_id, item, new_balance):
     try:
-        msg = bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
+        msg = bot.send_message(user_id, f"🔄 تم خصم {item['price']} \( وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \)\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
         bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
     except Exception as e:
         print(f"Telegram Send Error: {e}")
@@ -85,6 +85,7 @@ def init_db():
 
 init_db()
 
+# --- تم إصلاح فك مصفوفة الـ Tuple هنا بشكل جذري [row[0]] لمنع خطأ السيرفر الداخلي ---
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -95,7 +96,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row
+        balance = row[0]  # جلب الرقم العشري المباشر (مثل 50.0) لمنع تعارض الـ HTML كلياً
     conn.close()
     return float(balance)
 
@@ -111,7 +112,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row if row else 0
+    count = row[0] if row else 0
     conn.close()
     return count
 
@@ -125,8 +126,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts)
-            amount = float(parts)
+            target_id = int(parts[1])
+            amount = float(parts[2])
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
@@ -180,4 +181,7 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
     print("Integrated Mini App Server is running...")
+    
+    # مسح الـ Webhook القديم المعلق لإنهاء خطأ Conflict 409 فوراً
+    bot.delete_webhook()
     bot.infinity_polling()
