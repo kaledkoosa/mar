@@ -4,7 +4,7 @@ import sqlite3
 import os
 import threading
 import json
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
@@ -17,9 +17,41 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # تعويض رصيد العميل بشكل نصي سليم داخل واجهة المتجر
+    # استبدال العلامات ديناميكياً لتمرير الرصيد والـ ID الصافي
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
+    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
+
+# استلام طلبات الشراء الفورية مباشرة من الـ Fetch API الخاص بالمتجر
+@app.route('/api/action', methods=['POST'])
+def handle_api_action():
+    data = request.json
+    try:
+        user_id = int(data.get("user_id"))
+        action = data.get("action")
+        
+        if action == "buy":
+            item_key = data.get("item")
+            item = PRICES[item_key]
+            
+            # الخصم وتحديث الأرصدة فوراً
+            update_user_balance(user_id, -item["price"])
+            new_balance = get_user_balance(user_id)
+            
+            # إرسال رسالة التأكيد وطلب الـ ID بداخل الشات فوراً عبر Thread آمن
+            threading.Thread(target=send_buy_msg, args=(user_id, item, new_balance)).start()
+            
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        print(f"API Error: {e}")
+        return jsonify({"status": "error"}), 500
+
+def send_buy_msg(user_id, item, new_balance):
+    try:
+        msg = bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
+        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
+    except Exception as e:
+        print(f"Telegram Send Error: {e}")
 
 @app.route('/')
 def home():
@@ -29,7 +61,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# إعدادات الحماية والتوكن والروابط
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -54,7 +85,6 @@ def init_db():
 
 init_db()
 
-# فك المصفوفة بشكل صريح ليعيد السيرفر رقم مجرد (Float) دائماً ويمنع تجميد العمليات
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -65,7 +95,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تم إصلاحها هنا بدقة لجلب القيمة الرقمية الصافية فقط (مثل 50.0)
+        balance = row
     conn.close()
     return float(balance)
 
@@ -81,34 +111,9 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0
+    count = row if row else 0
     conn.close()
     return count
-
-# --- استقبال البيانات كلياً بشكل فوري بعد سحب الأرقام الصافية ---
-@bot.message_handler(content_types=['web_app_data'])
-def handle_web_app_data(message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
-    try:
-        data = json.loads(message.web_app_data.data)
-        action = data.get("action")
-        
-        if action == "buy":
-            item_key = data.get("item")
-            item = PRICES[item_key]
-            
-            # تنفيذ عملية الخصم الفوري
-            update_user_balance(user_id, -item["price"])
-            new_balance = get_user_balance(user_id)
-            
-            # إرسال رسالة التأكيد وطلب الـ ID بداخل الشات
-            msg = bot.send_message(chat_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
-            bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
-            
-    except Exception as e:
-        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء بداخل شات البوت.")
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -120,8 +125,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1])
-            amount = float(parts[2])
+            target_id = int(parts)
+            amount = float(parts)
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
@@ -132,11 +137,8 @@ def pay_user_balance(message):
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
             except:
                 pass
-                
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
-    else:
-        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير المتجر فقط.")
+            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر.")
 
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
@@ -154,7 +156,7 @@ def admin_panel(message):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
-    balance = get_user_balance(message.from_user.id)
+    balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
     welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
