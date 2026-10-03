@@ -17,13 +17,12 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حل مشكلة الصفر نهائياً: استبدال الكلمة المفتاحية بالرصيد الصافي مباشرة داخل نص الـ HTML
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر المدمج كلياً يعملان بنجاح!"
+    return "بوابة التحكم والسيرفر يعملان بنجاح ومزامنة الرصيد نشطة!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -63,7 +62,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # استخراج الرقم العشري الصافي والمجرد من الـ Tuple بشكل دقيق ومضمون
+        balance = row[0]  # استخراج الرقم العشري الصافي لمنع أي تعارض
     conn.close()
     return float(balance)
 
@@ -83,14 +82,13 @@ def get_total_users():
     conn.close()
     return count
 
-# --- استقبال البيانات كلياً عبر بروتوكول شات تيليجرام المدمج ---
+# --- استقبال البيانات كلياً عبر بروتوكول شات تيليجرام المدمج الفعال ---
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app_data(message):
     user_id = message.from_user.id
     chat_id = message.chat.id
     
     try:
-        # تفكيك البيانات القادمة من الـ Web App المدمج بالشات
         data = json.loads(message.web_app_data.data)
         action = data.get("action")
         
@@ -98,7 +96,7 @@ def handle_web_app_data(message):
             item_key = data.get("item")
             item = PRICES[item_key]
             
-            # تنفيذ عملية الخصم المباشر
+            # الخصم وتحديث الرصيد الفوري
             update_user_balance(user_id, -item["price"])
             new_balance = get_user_balance(user_id)
             
@@ -106,7 +104,7 @@ def handle_web_app_data(message):
             bot.register_next_step_handler(msg, lambda m: bot.send_message(chat_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
             
     except Exception as e:
-        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء من المتجر المدمج.")
+        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء.")
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -133,8 +131,6 @@ def pay_user_balance(message):
                 
         except Exception as e:
             bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
-    else:
-        bot.send_message(message.chat.id, "❌ عذراً، هذا الأمر مخصص لمدير المتجر فقط.")
 
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
@@ -142,23 +138,25 @@ def admin_panel(message):
     if user_id == ADMIN_CHAT_ID:
         total_users = get_total_users()
         admin_text = (
-            f"👑 **لوحة تحكم الإدارة الرسمية لمتجر عبد البصير** 👑\n\n"
-            f"👥 إجمالي عدد المستخدمين المسجلين: `{total_users}` مستخدم.\n\n"
-            f"💡 **طريقة شحن رصيد مستخدم:**\n"
-            f"اكتب في الشات:\n"
+            f"👑 **لوحة تحكم الإدارة لمتجر عبد البصير** 👑\n\n"
+            f"👥 إجمالي المستخدمين: `{total_users}` مستخدم.\n\n"
+            f"💡 **لشحن رصيد مستخدم:**\n"
             f"`/pay [ID المستخدم] [المبلغ]`"
         )
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
 
+# --- تحديث أمر الترحيب لفتح المتجر عبر زر إنلاين (Inline Button) المعتمد بروتوكولياً لحل مشكلة الإرسال ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح واجهة المتجر وبوابة الشحن المدمجة كلياً:"
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
+    
+    # بناء زر إنلاين مخصص تحت الرسالة مباشرة لتفعيل صلاحية tg.sendData 
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 @bot.message_handler(content_types=['photo'])
