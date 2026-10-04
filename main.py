@@ -17,13 +17,13 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حقن الرموز والمغيرات البرمجية لتتكامل لوحة التحكم بداخل التطبيق المصغر
+    # استبدال العلامات ديناميكياً لتمرير الرصيد ومعرفات الحسابات داخل واجهة الويب
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     html_content = html_content.replace("ADMIN_ID_MARKER", str(ADMIN_CHAT_ID))
     return render_template_string(html_content)
 
-# استقبال ومعالجة عمليات الشراء وشحن رصيد المستخدمين كلياً من داخل واجهة الويب المصغرة
+# استقبال ومعالجة طلبات المبيعات وشحن أرصدة العملاء من داخل التطبيق المصغر
 @app.route('/api/action', methods=['POST'])
 def handle_api_action():
     data = request.json
@@ -36,11 +36,11 @@ def handle_api_action():
             player_id = data.get("player_id")
             item = PRICES[item_key]
             
-            # خصم قيمة الباقة من حساب المشترك
+            # تنفيذ عملية خصم القيمة وتحديث قاعدة البيانات
             update_user_balance(user_id, -item["price"])
             new_balance = get_user_balance(user_id)
             
-            # تشغيل إشعارات تيليجرام في Threads منفصلة وآمنة تماماً
+            # إرسال التنبيهات الفورية بمسارات منفصلة آمنة للشبكة
             threading.Thread(target=notify_purchase, args=(user_id, item, player_id, new_balance)).start()
             
         elif action == "admin_pay" and user_id == ADMIN_CHAT_ID:
@@ -57,10 +57,10 @@ def handle_api_action():
 
 def notify_purchase(user_id, item, player_id, new_balance):
     try:
-        # إشعار العميل بنجاح الخصم والشراء
+        # إشعار العميل بنجاح العملية
         bot.send_message(user_id, f"🎉 تم تأكيد شراء **{item['name']}** بنجاح واقتطاع {item['price']}\$ من رصيدك.\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي في المتجر: {new_balance}\$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك في اللعبة فوراً من الإدارة.")
         
-        # إرسال إشعار فوري وتفصيلي للأدمن ببيانات عملية الشراء لتوصيل الشحنة يدوياً في اللعبة
+        # إرسال إشعار فوري وتفصيلي للأدمن لتسليم الطلب يدوياً في اللعبة
         bot.send_message(ADMIN_CHAT_ID, f"📥 **طلب شحن جديد قادم من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
     except Exception as e:
         print(f"Telegram Notify Purchase Error: {e}")
@@ -80,6 +80,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
+# إعداد المتغيرات الأساسية (تأكد من إدخال التوكن والمعرف الرقمي في إعدادات Render)
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -104,7 +105,7 @@ def init_db():
 
 init_db()
 
-# --- دالة جلب الرصيد الآمنة والمعدلة كلياً لمنع الأخطاء الداخلية ---
+# تفكيك مصفوفات SQLite بشكل صريح لسحب الأرقام العشرية المباشرة والمزامنة مع المتصفح
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -115,8 +116,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        # التأكد من فك كائن الـ Tuple بأمان سواء كان مصفوفة أو رقماً مجرداً
-        balance = row[0] if isinstance(row, (tuple, list)) else row
+        balance = row[0]  # جلب الرقم الصافي مباشرة بدون تعقيدات المصفوفات (Tuple)
     conn.close()
     return float(balance)
 
