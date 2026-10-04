@@ -104,6 +104,7 @@ def init_db():
 
 init_db()
 
+# --- دالة جلب الرصيد الآمنة والمعدلة كلياً لمنع الأخطاء الداخلية ---
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -114,7 +115,8 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row
+        # التأكد من فك كائن الـ Tuple بأمان سواء كان مصفوفة أو رقماً مجرداً
+        balance = row[0] if isinstance(row, (tuple, list)) else row
     conn.close()
     return float(balance)
 
