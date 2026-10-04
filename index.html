@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>متجر عبد البصير المتكامل</title>
+    <title>متجر عبد البصير للشحن الكامل</title>
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -56,7 +56,10 @@
             font-family: monospace; font-size: 11px; word-break: break-all;
             margin: 8px 0; border: 1px solid rgba(255,255,255,0.05); color: #f1c40f;
         }
-        /* تصميم لوحة تحكم الأدمن السرية */
+        .badge {
+            background: #2ecc71; color: white; font-size: 10px;
+            padding: 2px 6px; border-radius: 4px; float: left;
+        }
         .admin-panel {
             display: none; background: #2c3e50; border: 2px dashed #e74c3c;
             padding: 15px; border-radius: 12px; margin-top: 30px;
@@ -69,13 +72,11 @@
         <h2>🎮 متجر عبد البصير للشحن الكامل</h2>
     </div>
 
-    <!-- لوحة تحكم العميل -->
     <div id="client-view">
         <div class="balance-card">
             💰 رصيدك الحالي: <span id="user-balance">USER_BALANCE_MARKER</span> $
         </div>
 
-        <!-- مربع إدخال معرف اللاعب المدمج داخل التطبيق المصغر -->
         <div class="deposit-box" style="margin-top: 0; margin-bottom: 15px; border-color: #3b9cff;">
             <label class="section-title" style="margin: 0; font-size: 14px;">🆔 أدخل ID اللاعب (الحساب المراد شحنه):</label>
             <input type="number" id="player-id-input" class="input-field" placeholder="اكتب ID اللعبة هنا...">
@@ -123,7 +124,7 @@
     <!-- لوحة تحكم الإدارة السرية للأدمن تظهر داخل التطبيق تلقائياً -->
     <div class="admin-panel" id="admin-view">
         <h3 style="color: #e74c3c; margin-top: 0; text-align: center;">👑 لوحة تحكم مدير المتجر 👑</h3>
-        <p style="font-size: 13px; color: #ecf0f1;">يمكنك شحن وتزويد رصيد أي مستجر مسجل مباشرة من هنا:</p>
+        <p style="font-size: 13px; color: #ecf0f1;">يمكنك شحن وتزويد رصيد أي مستخدم مسجل مباشرة من هنا:</p>
         
         <label style="font-size: 13px;">🆔 رقم ID حساب المستخدم في تيليجرام:</label>
         <input type="number" id="charge-user-id" class="input-field" placeholder="اكتب ID تيليجرام الخاص بالزبون...">
@@ -139,12 +140,12 @@
         tg.ready();
         tg.expand();
 
-        const CURRENT_USER_ID = "USER_ID_MARKER";
-        const ADMIN_CHAT_ID = "ADMIN_ID_MARKER";
         const REAL_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
+        const user_id = "USER_ID_MARKER";
+        const admin_id = "ADMIN_ID_MARKER";
 
-        // التحقق التلقائي إذا كان فاتح التطبيق هو الأدمن أم زبون عادي لعرض لوحة التحكم
-        if (CURRENT_USER_ID === ADMIN_CHAT_ID) {
+        // التحقق الآمن والمباشر لعرض لوحة تحكم الأدمن
+        if (String(user_id) === String(admin_id)) {
             document.getElementById('admin-view').style.display = 'block';
         }
 
@@ -176,11 +177,10 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // إرسال طلب الشراء المتكامل لـ Backend مباشرة بدون وسيط
                     fetch('/api/action', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({user_id: CURRENT_USER_ID, action: "buy", item: itemKey, player_id: playerID})
+                        body: JSON.stringify({user_id: user_id, action: "buy", item: itemKey, player_id: playerID})
                     }).then(res => {
                         if (res.ok) {
                             tg.showAlert("✅ تم تأكيد عملية الشراء والخصم تلقائياً! جاري شحن وتوصيل الباقة للـ ID المحدد من قبل الإدارة.");
@@ -191,7 +191,6 @@
             });
         }
 
-        // دالة شحن رصيد المستخدمين مباشرة من داخل التطبيق المصغر للأدمن
         function adminChargeUser() {
             const targetId = document.getElementById('charge-user-id').value.trim();
             const amount = document.getElementById('charge-amount').value.trim();
@@ -204,8 +203,12 @@
             fetch('/api/action', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({user_id: CURRENT_USER_ID, action: "admin_pay", target_id: targetId, amount: amount})
+                body: JSON.stringify({user_id: user_id, action: "admin_pay", target_id: targetId, amount: amount})
             }).then(res => {
                 if (res.ok) {
                     tg.showAlert(`✅ تم بنجاح شحن وتزويد ${amount}$ لحساب المستخدم ${targetId} مباشرة!`);
                     document.getElementById('charge-user-id').value = '';
+                    document.getElementById('charge-amount').value = '';
+                } else {
+                    tg.showAlert("❌ فشل عملية الشحن، تأكد من البيانات.");
+                }
