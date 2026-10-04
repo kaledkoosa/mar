@@ -17,12 +17,13 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # استبدال العلامات ديناميكياً لتمرير الرصيد والـ ID الصافي
+    # حقن الرموز والمغيرات البرمجية لتتكامل لوحة التحكم بداخل التطبيق المصغر
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
+    html_content = html_content.replace("ADMIN_ID_MARKER", str(ADMIN_CHAT_ID))
     return render_template_string(html_content)
 
-# استلام طلبات الشراء الفورية مباشرة من الـ Fetch API الخاص بالمتجر
+# استقبال ومعالجة عمليات الشراء وشحن رصيد المستخدمين كلياً من داخل واجهة الويب المصغرة
 @app.route('/api/action', methods=['POST'])
 def handle_api_action():
     data = request.json
@@ -32,30 +33,48 @@ def handle_api_action():
         
         if action == "buy":
             item_key = data.get("item")
+            player_id = data.get("player_id")
             item = PRICES[item_key]
             
-            # الخصم وتحديث الأرصدة فوراً
+            # خصم قيمة الباقة من حساب المشترك
             update_user_balance(user_id, -item["price"])
             new_balance = get_user_balance(user_id)
             
-            # إرسال رسالة التأكيد وطلب الـ ID بداخل الشات فوراً عبر Thread آمن
-            threading.Thread(target=send_buy_msg, args=(user_id, item, new_balance)).start()
+            # تشغيل إشعارات تيليجرام في Threads منفصلة وآمنة تماماً
+            threading.Thread(target=notify_purchase, args=(user_id, item, player_id, new_balance)).start()
             
+        elif action == "admin_pay" and user_id == ADMIN_CHAT_ID:
+            target_id = int(data.get("target_id"))
+            amount = float(data.get("amount"))
+            
+            update_user_balance(target_id, amount)
+            threading.Thread(target=notify_deposit, args=(target_id, amount)).start()
+
         return jsonify({"status": "success"}), 200
     except Exception as e:
         print(f"API Error: {e}")
         return jsonify({"status": "error"}), 500
 
-def send_buy_msg(user_id, item, new_balance):
+def notify_purchase(user_id, item, player_id, new_balance):
     try:
-        msg = bot.send_message(user_id, f"🔄 تم خصم {item['price']} \( وشراء **{item['name']}** بنجاح!\n💰 رصيدك المتبقي الحالي: {new_balance} \)\n\nالرجاء كتابة وإرسال الـ ID الخاص بحسابك في اللعبة هنا فوراً ليتم الشحن لك:")
-        bot.register_next_step_handler(msg, lambda m: bot.send_message(user_id, "✅ تم استلام الـ ID بنجاح، جاري الشحن والتوصيل الفوري من الإدارة."))
+        # إشعار العميل بنجاح الخصم والشراء
+        bot.send_message(user_id, f"🎉 تم تأكيد شراء **{item['name']}** بنجاح واقتطاع {item['price']}\$ من رصيدك.\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي في المتجر: {new_balance}\$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك في اللعبة فوراً من الإدارة.")
+        
+        # إرسال إشعار فوري وتفصيلي للأدمن ببيانات عملية الشراء لتوصيل الشحنة يدوياً في اللعبة
+        bot.send_message(ADMIN_CHAT_ID, f"📥 **طلب شحن جديد قادم من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
     except Exception as e:
-        print(f"Telegram Send Error: {e}")
+        print(f"Telegram Notify Purchase Error: {e}")
+
+def notify_deposit(target_id, amount):
+    try:
+        new_balance = get_user_balance(target_id)
+        bot.send_message(target_id, f"🎉 بشرى سارة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح عن طريق الإدارة.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**")
+    except Exception as e:
+        print(f"Telegram Notify Deposit Error: {e}")
 
 @app.route('/')
 def home():
-    return "بوابة التحكم والسيرفر يعملان بنجاح ومزامنة الرصيد نشطة!"
+    return "السيرفر والتطبيق المصغر المستقل بالكامل يعملان بأعلى كفاءة ومزامنة تامة!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -85,7 +104,6 @@ def init_db():
 
 init_db()
 
-# --- تم إصلاح فك مصفوفة الـ Tuple هنا بشكل جذري [row[0]] لمنع خطأ السيرفر الداخلي ---
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -96,7 +114,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # جلب الرقم العشري المباشر (مثل 50.0) لمنع تعارض الـ HTML كلياً
+        balance = row
     conn.close()
     return float(balance)
 
@@ -107,60 +125,13 @@ def update_user_balance(user_id, amount):
     conn.commit()
     conn.close()
 
-def get_total_users():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    row = cursor.fetchone()
-    count = row[0] if row else 0
-    conn.close()
-    return count
-
-@bot.message_handler(commands=['pay'])
-def pay_user_balance(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        try:
-            parts = message.text.split()
-            if len(parts) < 3:
-                bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
-                return
-            
-            target_id = int(parts[1])
-            amount = float(parts[2])
-            
-            update_user_balance(target_id, amount)
-            new_balance = get_user_balance(target_id)
-            
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
-            
-            try:
-                bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
-            except:
-                pass
-        except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر.")
-
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        total_users = get_total_users()
-        admin_text = (
-            f"👑 **لوحة تحكم الإدارة لمتجر عبد البصير** 👑\n\n"
-            f"👥 إجمالي المستخدمين: `{total_users}` مستخدم.\n\n"
-            f"💡 **لشحن رصيد مستخدم:**\n"
-            f"`/pay [ID المستخدم] [المبلغ]`"
-        )
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن الكامل المطور!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر المستقلة كلياً وبوابة الشحن مدمجة:"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
@@ -172,7 +143,7 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الحساب استخدم:\n`/pay {user_id} [المبلغ]`")
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه بداخل التطبيق المصغر: `{user_id}`\n👤 الاسم: {message.from_user.first_name}")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -180,8 +151,7 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("Integrated Mini App Server is running...")
+    print("Independent Mini App Server is running...")
     
-    # مسح الـ Webhook القديم المعلق لإنهاء خطأ Conflict 409 فوراً
     bot.delete_webhook()
     bot.infinity_polling()
