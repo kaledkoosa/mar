@@ -10,7 +10,11 @@ app = Flask('')
 
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
-    balance = get_user_balance(user_id)
+    try:
+        balance = get_user_balance(user_id)
+    except Exception as e:
+        return f"Error inside database fetching: {str(e)}"
+        
     try:
         with open("index.html", "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -54,7 +58,7 @@ def init_db():
 
 init_db()
 
-# فك المصفوفة بشكل صريح ليعيد السيرفر رقم مجرد (Float) دائماً لمنع تجميد المعالجة
+# الفكس الرئيسي: فك المصفوفة بشكل صريح للوصول إلى القيمة الرقمية الصافية [0]
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -65,7 +69,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row  # جلب الرقم الصافي مباشرة بدون تعقيدات المصفوفات (Tuple)
+        balance = row[0]  # التعديل هنا: جلب العنصر الأول داخل الـ Tuple لمنع انهيار الـ float
     conn.close()
     return float(balance)
 
@@ -81,7 +85,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row if row else 0
+    count = row[0] if row else 0 # تعديل لفك الـ Tuple هنا أيضاً لضمان السلامة
     conn.close()
     return count
 
@@ -108,7 +112,7 @@ def handle_web_app_data(message):
             bot.send_message(chat_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
             
             # إرسال الفاتورة والتفاصيل الكاملة للأدمن لتسليم الشحنة يدوياً في اللعبة
-            bot.send_photo(ADMIN_CHAT_ID, "https://unsplash.com", caption=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
+            bot.send_message(ADMIN_CHAT_ID, text=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
             
     except Exception as e:
         bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء بداخل شات البوت.")
@@ -123,8 +127,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts)
-            amount = float(parts)
+            target_id = int(parts[1]) # تعديل: أخذ الفهرس الصحيح للمستخدم
+            amount = float(parts[2])  # تعديل: أخذ الفهرس الصحيح للمبلغ
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
