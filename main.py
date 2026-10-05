@@ -4,7 +4,7 @@ import sqlite3
 import os
 import threading
 import json
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
@@ -21,9 +21,46 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حل مشكلة تصفير الرصيد: استبدال العلامة بالرصيد المالي المجرد والصافي مباشرة داخل نص الـ HTML
+    # استبدال العلامة بالرصيد المالي المجرد والصافي مباشرة داخل نص الـ HTML
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
+
+# مسار خلفي (API) متوافق تماماً مع الأزرار الشفافة لاستقبال عمليات الشراء وإرسال الإشعارات
+@app.route('/api/buy', methods=['POST'])
+def api_buy_item():
+    try:
+        data = request.json
+        user_id = int(data.get("user_id"))
+        item_key = data.get("item")
+        player_id = data.get("player_id")
+        
+        item = PRICES.get(item_key)
+        if not item:
+            return jsonify({"success": False, "message": "الباقة المطلوبة غير مدعومة حالياً."})
+            
+        balance = get_user_balance(user_id)
+        if balance < item["price"]:
+            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
+            
+        # الخصم وتحديث الرصيد الفوري بداخل قاعدة البيانات
+        update_user_balance(user_id, -item["price"])
+        new_balance = get_user_balance(user_id)
+        
+        # إشعار العميل بنجاح العملية في شات البوت
+        try:
+            bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
+        except:
+            pass
+
+        # إرسال التفاصيل الكاملة للأدمن لتسليم الشحنة يدوياً في اللعبة
+        try:
+            bot.send_message(ADMIN_CHAT_ID, text=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
+        except:
+            pass
+            
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
 
 @app.route('/')
 def home():
@@ -58,7 +95,7 @@ def init_db():
 
 init_db()
 
-# الفكس الرئيسي: فك المصفوفة بشكل صريح للوصول إلى القيمة الرقمية الصافية [0]
+# فك المصفوفة بشكل صريح للوصول إلى القيمة الرقمية الصافية ومنع خطأ 500
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -69,7 +106,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # التعديل هنا: جلب العنصر الأول داخل الـ Tuple لمنع انهيار الـ float
+        balance = row[0]  # جلب العنصر الأول داخل الـ Tuple لمنع انهيار الـ float
     conn.close()
     return float(balance)
 
@@ -85,37 +122,9 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0 # تعديل لفك الـ Tuple هنا أيضاً لضمان السلامة
+    count = row[0] if row else 0 
     conn.close()
     return count
-
-# --- معالجة واستقبال بيانات المبيعات المشفرة القادمة مباشرة من بروتوكول تيليجرام المدمج ---
-@bot.message_handler(content_types=['web_app_data'])
-def handle_web_app_data(message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    
-    try:
-        data = json.loads(message.web_app_data.data)
-        action = data.get("action")
-        
-        if action == "buy":
-            item_key = data.get("item")
-            player_id = data.get("player_id")
-            item = PRICES[item_key]
-            
-            # الخصم وتحديث الرصيد الفوري بداخل قاعدة البيانات
-            update_user_balance(user_id, -item["price"])
-            new_balance = get_user_balance(user_id)
-            
-            # إشعار العميل بنجاح العملية
-            bot.send_message(chat_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
-            
-            # إرسال الفاتورة والتفاصيل الكاملة للأدمن لتسليم الشحنة يدوياً في اللعبة
-            bot.send_message(ADMIN_CHAT_ID, text=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
-            
-    except Exception as e:
-        bot.send_message(chat_id, "❌ حدث خطأ أثناء معالجة عملية الشراء بداخل شات البوت.")
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -127,8 +136,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1]) # تعديل: أخذ الفهرس الصحيح للمستخدم
-            amount = float(parts[2])  # تعديل: أخذ الفهرس الصحيح للمبلغ
+            target_id = int(parts[1]) # أخذ الفهرس الصحيح للمستخدم
+            amount = float(parts[2])  # أخذ الفهرس الصحيح للمبلغ
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
@@ -155,7 +164,6 @@ def admin_panel(message):
         )
         bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
 
-# إطلاق البوت والواجهة عبر زر الإنلاين الشفاف المعتمد بروتوكولياً لتنفيذ دالة sendData بنجاح حتمي
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
