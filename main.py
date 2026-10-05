@@ -8,72 +8,9 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-@app.route('/shop/<int:user_id>')
-def shop_interface(user_id):
-    try:
-        balance = get_user_balance(user_id)
-    except Exception as e:
-        return f"Error inside database fetching: {str(e)}"
-        
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-    except:
-        return "Error: index.html not found."
-    
-    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
-    return render_template_string(html_content)
-
-@app.route('/api/buy', methods=['POST'])
-def api_buy_item():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"success": False, "message": "بيانات الطلب فارغة!"})
-            
-        user_id = int(data.get("user_id"))
-        item_key = data.get("item")
-        player_id = data.get("player_id")
-        
-        item = PRICES.get(item_key)
-        if not item:
-            return jsonify({"success": False, "message": "الباقة المطلوبة غير مدعومة حالياً."})
-            
-        balance = get_user_balance(user_id)
-        if balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
-            
-        update_user_balance(user_id, -item["price"])
-        new_balance = get_user_balance(user_id)
-        
-        try:
-            bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
-        except:
-            pass
-
-        try:
-            bot.send_message(ADMIN_CHAT_ID, text=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
-        except:
-            pass
-            
-        response = jsonify({"success": True})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-    except Exception as e:
-        response = jsonify({"success": False, "message": str(e)})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-
-@app.route('/')
-def home():
-    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
+# --- جلب المتغيرات السرية بأمان تام ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
@@ -106,7 +43,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # التعديل الصحيح: فك المصفوفة بشكل سليم ومثالي هنا
+        balance = row
     conn.close()
     return float(balance)
 
@@ -122,9 +59,86 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0 
+    count = row if row else 0 
     conn.close()
     return count
+
+@app.route('/shop/<int:user_id>')
+def shop_interface(user_id):
+    try:
+        balance = get_user_balance(user_id)
+    except Exception as e:
+        return f"Error inside database fetching: {str(e)}"
+        
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+    except:
+        return "Error: index.html not found."
+    
+    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
+    return render_template_string(html_content)
+
+# الفكس الرئيسي: عزل إرسال الفاتورة وتحديث البيانات في خيط منفصل تماماً عن مسار Flask الرئيسي لمنع التجميد
+def async_send_order(user_id, item, player_id):
+    try:
+        # 1. إرسال الإشعار الفوري لك كآدمن
+        admin_msg = (
+            f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n"
+            f"👤 حساب المشتري ID: `{user_id}`\n"
+            f"📦 الباقة المطلوبة: **{item['name']}**\n"
+            f"🆔 **ID اللاعب في اللعبة:** `{player_id}`\n\n"
+            f"📌 يرجى الدخول وشحن الباقة فوراً!"
+        )
+        bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
+        
+        # 2. خصم الرصيد من الحساب بعد تأكيد إرسال الفاتورة بنجاح
+        update_user_balance(user_id, -item["price"])
+        new_balance = get_user_balance(user_id)
+        
+        # 3. إشعار العميل بنجاح العملية
+        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
+        bot.send_message(user_id, user_msg)
+    except Exception as e:
+        print(f"Async Notification Error: {str(e)}")
+
+@app.route('/api/buy', methods=['POST'])
+def api_buy_item():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "message": "بيانات الطلب فارغة!"})
+            
+        user_id = int(data.get("user_id"))
+        item_key = data.get("item")
+        player_id = data.get("player_id")
+        
+        item = PRICES.get(item_key)
+        if not item:
+            return jsonify({"success": False, "message": "الباقة المطلوبة غير مدعومة حالياً."})
+            
+        balance = get_user_balance(user_id)
+        if balance < item["price"]:
+            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
+            
+        # تشغيل خيط المعالجة بالخلفية لفك تجميد أزرار الشراء الفورية حتمياً
+        threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
+            
+        response = jsonify({"success": True})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
+    except Exception as e:
+        response = jsonify({"success": False, "message": str(e)})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
+
+@app.route('/')
+def home():
+    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -136,8 +150,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1]) # تعديل الفهرس المصلح والموثق حتماً
-            amount = float(parts[2])  # تعديل الفهرس المصلح والموثق حتماً
+            target_id = int(parts)
+            amount = float(parts)
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
@@ -192,5 +206,6 @@ if __name__ == "__main__":
     flask_thread.start()
     print("Independent Mini App Server is running...")
     
-    bot.delete_webhook()
-    bot.infinity_polling()
+    if BOT_TOKEN != "placeholder_token":
+        bot.delete_webhook()
+        bot.infinity_polling()
