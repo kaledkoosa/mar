@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير المعاصر</title>
-    <!-- استدعاء مكتبة بروتوكول تيليجرام الرسمية المعاصرة -->
+    <!-- الفكس الرئيسي: استدعاء مكتبة بروتوكول تيليجرام المصغرة الرسمية والصحيحة -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -69,13 +69,13 @@
     </div>
 
     <div class="balance-card">
-        💰 رصيدك الحالي: <span>USER_BALANCE_MARKER</span> \$
+        💰 رصيدك الحالي: <span id="display-balance">USER_BALANCE_MARKER</span> \$
     </div>
 
-    <!-- إدخال معرف اللاعب مدمج ومعاصر كلياً بداخل المتجر -->
+    <!-- إدخال معرف اللاعب (تم تحويله لـ text للحفاظ على الأرقام بالكامل) -->
     <div class="deposit-box" style="margin-top: 0; margin-bottom: 15px; border-color: #3b9cff;">
         <label class="section-title" style="margin: 0; font-size: 14px;">🆔 أدخل ID اللاعب (الحساب المراد شحنه):</label>
-        <input type="number" id="player-id-input" class="input-field" placeholder="اكتب ID اللعبة هنا...">
+        <input type="text" id="player-id-input" class="input-field" placeholder="اكتب ID اللعبة هنا...">
     </div>
 
     <div class="section-title">📦 باقات ببجي موبايل (PUBG)</div>
@@ -118,17 +118,21 @@
     </div>
 
     <script>
-        // تهيئة بروتوكول تيليجرام وإجبار الأزرار على تفعيل الصلاحية الفورية المباشرة
+        // تهيئة بروتوكول تيليجرام وتمديد واجهة التطبيق
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        const REAL_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
+        // جلب الرصيد من النص المستبدل بواسطة السيرفر مباشرة
+        const rawBalance = document.getElementById("display-balance").innerText;
+        const REAL_BALANCE = parseFloat(rawBalance) || 0.0;
 
         function copyWallet(elementId) {
             const addressText = document.getElementById(elementId).innerText;
             navigator.clipboard.writeText(addressText).then(() => {
                 tg.showAlert("✅ تم نسخ عنوان المحفظة بنجاح!");
+            }).catch(() => {
+                tg.showAlert("✅ العنوان: " + addressText);
             });
         }
 
@@ -146,14 +150,14 @@
 
             tg.showPopup({
                 title: 'تأكيد عملية الشراء',
-                message: `هل ترغب في اقتطاع القيمة وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
+                message: `هل ترغب في اقتطاع بقيمة ${price}$ وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
                 buttons: [
                     {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
                     {id: 'cancel', type: 'destructive', text: 'إلغاء'}
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // الدمج الكلي المضمون: تمرير البيانات المشفرة مباشرة عبر بروتوكول شات تيليجرام الأساسي
+                    // إرسال البيانات المشفرة للبوت وإغلاق النافذة فوراً
                     const payload = { action: "buy", item: itemKey, player_id: playerID };
                     tg.sendData(JSON.stringify(payload));
                     tg.close();
