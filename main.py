@@ -8,7 +8,7 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام ---
+# --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -33,6 +33,7 @@ def init_db():
 
 init_db()
 
+# 🔥 الفكس الحتمي والنهائي لمشكلة الـ tuple وشاشة الخطأ:
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -43,7 +44,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row
+        balance = row[0]  # هنا تم التعديل الحاسم: استخراج العنصر الأول الصافي من المصفوفة لمنع الانهيار
     conn.close()
     return float(balance)
 
@@ -59,7 +60,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row if row else 0 
+    count = row[0] if row else 0 # فك المصفوفة هنا أيضاً لضمان السلامة المطلقة
     conn.close()
     return count
 
@@ -79,7 +80,7 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
-# الفكس الرئيسي: عزل إرسال الفاتورة وتحديث البيانات في خيط منفصل تماماً عن مسار Flask الرئيسي لمنع التجميد
+# معالجة الطلبات في الخلفية لمنع تجميد خادم Flask أثناء إرسال رسائل تيليجرام
 def async_send_order(user_id, item, player_id):
     try:
         # 1. إرسال الإشعار الفوري لك كآدمن
@@ -92,7 +93,7 @@ def async_send_order(user_id, item, player_id):
         )
         bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
         
-        # 2. خصم الرصيد من الحساب بعد تأكيد إرسال الفاتورة بنجاح
+        # 2. خصم الرصيد من الحساب بعد الاطمئنان لنجاح إرسال الإشعار
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
@@ -121,7 +122,7 @@ def api_buy_item():
         if balance < item["price"]:
             return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
             
-        # تشغيل خيط المعالجة بالخلفية لفك تجميد أزرار الشراء الفورية حتمياً
+        # إطلاق خيط معالجة الطلب لضمان سرعة استجابة الزر وتخطي الحظر
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
             
         response = jsonify({"success": True})
@@ -150,8 +151,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts)
-            amount = float(parts)
+            target_id = int(parts[1]) # تصحيح الفهرس البرمي للمستخدم
+            amount = float(parts[2])  # تصحيح الفهرس البرمي للمبلغ
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
