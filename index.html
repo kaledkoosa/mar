@@ -154,15 +154,22 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // فك قيود تيليجرام: إرسال الطلب عبر مسار الـ Fetch المخصص لحل مشكلة الأزرار الشفافة
+                    // تصحيح حتمي: استخراج الـ User ID من مسار المتصفح الحالي ودعمه بالـ dynamic host
                     const userId = window.location.pathname.split('/').pop();
+                    const currentHost = window.location.origin;
                     
-                    fetch('/api/buy', {
+                    fetch(`${currentHost}/api/buy`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
                         body: JSON.stringify({ user_id: userId, item: itemKey, player_id: playerID })
                     })
-                    .then(res => res.json())
+                    .then(res => {
+                        if (!res.ok) throw new Error("Server communication error");
+                        return res.json();
+                    })
                     .then(resData => {
                         if (resData.success) {
                             tg.showAlert("✅ تم تسجيل طلب الشراء بنجاح! راجع شات البوت الفوري.");
@@ -171,7 +178,9 @@
                             tg.showAlert("❌ خطأ: " + resData.message);
                         }
                     })
-                    .catch(() => tg.showAlert("❌ فشل الاتصال بالسيرفر لإتمام عملية الشراء."));
+                    .catch((err) => {
+                        tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر على Render وبدء التشغيل المستقر.");
+                    });
                 }
             });
         }
