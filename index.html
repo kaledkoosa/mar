@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير المعاصر</title>
-    <!-- الفكس الرئيسي: استدعاء مكتبة بروتوكول تيليجرام المصغرة الرسمية والصحيحة -->
+    <!-- استدعاء مكتبة بروتوكول تيليجرام المصغرة الرسمية -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -72,7 +72,6 @@
         💰 رصيدك الحالي: <span id="display-balance">USER_BALANCE_MARKER</span> \$
     </div>
 
-    <!-- إدخال معرف اللاعب (تم تحويله لـ text للحفاظ على الأرقام بالكامل) -->
     <div class="deposit-box" style="margin-top: 0; margin-bottom: 15px; border-color: #3b9cff;">
         <label class="section-title" style="margin: 0; font-size: 14px;">🆔 أدخل ID اللاعب (الحساب المراد شحنه):</label>
         <input type="text" id="player-id-input" class="input-field" placeholder="اكتب ID اللعبة هنا...">
@@ -118,12 +117,10 @@
     </div>
 
     <script>
-        // تهيئة بروتوكول تيليجرام وتمديد واجهة التطبيق
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // جلب الرصيد من النص المستبدل بواسطة السيرفر مباشرة
         const rawBalance = document.getElementById("display-balance").innerText;
         const REAL_BALANCE = parseFloat(rawBalance) || 0.0;
 
@@ -157,10 +154,24 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // إرسال البيانات المشفرة للبوت وإغلاق النافذة فوراً
-                    const payload = { action: "buy", item: itemKey, player_id: playerID };
-                    tg.sendData(JSON.stringify(payload));
-                    tg.close();
+                    // فك قيود تيليجرام: إرسال الطلب عبر مسار الـ Fetch المخصص لحل مشكلة الأزرار الشفافة
+                    const userId = window.location.pathname.split('/').pop();
+                    
+                    fetch('/api/buy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: userId, item: itemKey, player_id: playerID })
+                    })
+                    .then(res => res.json())
+                    .then(resData => {
+                        if (resData.success) {
+                            tg.showAlert("✅ تم تسجيل طلب الشراء بنجاح! راجع شات البوت الفوري.");
+                            tg.close();
+                        } else {
+                            tg.showAlert("❌ خطأ: " + resData.message);
+                        }
+                    })
+                    .catch(() => tg.showAlert("❌ فشل الاتصال بالسيرفر لإتمام عملية الشراء."));
                 }
             });
         }
