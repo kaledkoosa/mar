@@ -21,11 +21,9 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # استبدال العلامة بالرصيد المالي المجرد والصافي مباشرة داخل نص الـ HTML
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
-# مسار خلفي (API) مصلح ومؤمن بالكامل لاستقبال حزم البيانات من الأزرار الشفافة بنجاح
 @app.route('/api/buy', methods=['POST'])
 def api_buy_item():
     try:
@@ -45,11 +43,9 @@ def api_buy_item():
         if balance < item["price"]:
             return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
             
-        # الخصم وتحديث الرصيد الفوري بداخل قاعدة البيانات
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        # إرسال الإشعارات الفورية للمستخدم والأدمن عبر البوت
         try:
             bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
         except:
@@ -61,7 +57,7 @@ def api_buy_item():
             pass
             
         response = jsonify({"success": True})
-        response.headers.add("Access-Control-Allow-Origin", "*") # لفك حظر الطلبات الخارجية بالهواتف
+        response.headers.add("Access-Control-Allow-Origin", "*")
         return response
     except Exception as e:
         response = jsonify({"success": False, "message": str(e)})
@@ -76,7 +72,6 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# إعدادات التوكن والمعرف الرقمي الموثقة لحسابك الشخصي
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_توكن_البوت_الخاص_بـك_هنا")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "123456789"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -101,7 +96,6 @@ def init_db():
 
 init_db()
 
-# فك المصفوفة بشكل صريح وآمن تماماً لمنع حدوث خطأ 500 نهائياً
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -112,7 +106,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # تصحيح حتمي: استخراج القيمة الصافية من الـ Tuple
+        balance = row[0]  # التعديل الصحيح: فك المصفوفة بشكل سليم ومثالي هنا
     conn.close()
     return float(balance)
 
@@ -142,8 +136,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1])
-            amount = float(parts[2])
+            target_id = int(parts[1]) # تعديل الفهرس المصلح والموثق حتماً
+            amount = float(parts[2])  # تعديل الفهرس المصلح والموثق حتماً
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
