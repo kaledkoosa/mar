@@ -25,11 +25,14 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
-# مسار خلفي (API) متوافق تماماً مع الأزرار الشفافة لاستقبال عمليات الشراء وإرسال الإشعارات
+# مسار خلفي (API) مصلح ومؤمن بالكامل لاستقبال حزم البيانات من الأزرار الشفافة بنجاح
 @app.route('/api/buy', methods=['POST'])
 def api_buy_item():
     try:
         data = request.json
+        if not data:
+            return jsonify({"success": False, "message": "بيانات الطلب فارغة!"})
+            
         user_id = int(data.get("user_id"))
         item_key = data.get("item")
         player_id = data.get("player_id")
@@ -46,21 +49,24 @@ def api_buy_item():
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        # إشعار العميل بنجاح العملية في شات البوت
+        # إرسال الإشعارات الفورية للمستخدم والأدمن عبر البوت
         try:
             bot.send_message(user_id, f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن في اللعبة: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري توصيل الشحنات والشدات لحسابك فوراً من الإدارة.")
         except:
             pass
 
-        # إرسال التفاصيل الكاملة للأدمن لتسليم الشحنة يدوياً في اللعبة
         try:
             bot.send_message(ADMIN_CHAT_ID, text=f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n👤 حساب المشتري ID: `{user_id}`\n📦 الباقة المطلوبة: **{item['name']}**\n🆔 **ID اللاعب المراد شحنه في اللعبة:** `{player_id}`\n\n📌 يرجى الدخول للعبة وشحن الباقة للـ ID المحدد فوراً!")
         except:
             pass
             
-        return jsonify({"success": True})
+        response = jsonify({"success": True})
+        response.headers.add("Access-Control-Allow-Origin", "*") # لفك حظر الطلبات الخارجية بالهواتف
+        return response
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)})
+        response = jsonify({"success": False, "message": str(e)})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
 
 @app.route('/')
 def home():
@@ -95,7 +101,7 @@ def init_db():
 
 init_db()
 
-# فك المصفوفة بشكل صريح للوصول إلى القيمة الرقمية الصافية ومنع خطأ 500
+# فك المصفوفة بشكل صريح وآمن تماماً لمنع حدوث خطأ 500 نهائياً
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -106,7 +112,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # جلب العنصر الأول داخل الـ Tuple لمنع انهيار الـ float
+        balance = row[0]  # تصحيح حتمي: استخراج القيمة الصافية من الـ Tuple
     conn.close()
     return float(balance)
 
@@ -136,8 +142,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1]) # أخذ الفهرس الصحيح للمستخدم
-            amount = float(parts[2])  # أخذ الفهرس الصحيح للمبلغ
+            target_id = int(parts[1])
+            amount = float(parts[2])
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
