@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير المعاصر</title>
-    <!-- استدعاء مكتبة بروتوكول تيليجرام المصغرة الرسمية -->
     <script src="https://telegram.org"></script>
     <style>
         body {
@@ -154,7 +153,6 @@
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    // تصحيح حتمي: استخراج الـ User ID من مسار المتصفح الحالي ودعمه بالـ dynamic host
                     const userId = window.location.pathname.split('/').pop();
                     const currentHost = window.location.origin;
                     
@@ -179,7 +177,7 @@
                         }
                     })
                     .catch((err) => {
-                        tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر على Render وبدء التشغيل المستقر.");
+                        tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر وبدء التشغيل المستقر.");
                     });
                 }
             });
