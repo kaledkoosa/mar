@@ -120,26 +120,9 @@
         tg.ready();
         tg.expand();
 
-        function getRealBalance() {
-            const rawBalance = document.getElementById("display-balance").innerText;
-            return parseFloat(rawBalance) || 0.0;
-        }
-
-        // دالة مبرمجة هندسياً لقص الـ ID ومنع الأخطاء الناتجة عن بارامترات تيليجرام المشفرة
-        function getCleanUserId() {
-            let path = window.location.pathname; 
-            if (path.endsWith('/')) {
-                path = path.slice(0, -1);
-            }
-            const parts = path.split('/');
-            let lastPart = parts[parts.length - 1];
-            
-            // التخلص الكامل من علامات الاستفهام وما بعدها (?tgWebAppStartParam)
-            if (lastPart.includes('?')) {
-                lastPart = lastPart.split('?')[0];
-            }
-            return parseInt(lastPart) || 0;
-        }
+        // قراءة الرصيد والحساب المحقونين من خادم بايثون كأرقام صافية ومباشرة دون أي تلاعب بالنصوص
+        const FIXED_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
+        const FIXED_USER_ID = parseInt("USER_ID_MARKER") || 0;
 
         function copyWallet(elementId) {
             const addressText = document.getElementById(elementId).innerText;
@@ -151,76 +134,59 @@
         }
 
         function buyItem(itemKey, price) {
-    const playerID = document.getElementById('player-id-input').value.trim();
-    const currentBalance = getRealBalance();
-    
-    if (!playerID) {
-        tg.showAlert("❌ عذراً! يرجى كتابة ID اللاعب أولاً في المربع الأزرق بالأعلى قبل الشراء.");
-        return;
-    }
-    if (currentBalance < price) {
-        tg.showAlert("❌ رصيدك الحالي غير كافٍ! يرجى تعبئة رصيدك أولاً عبر محفظة شام كاش بالأسفل.");
-        return;
-    }
-
-    tg.showPopup({
-        title: 'تأكيد عملية الشراء',
-        message: `هل ترغب في اقتطاع قيمة ${price}$ وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
-        buttons: [
-            {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
-            {id: 'cancel', type: 'destructive', text: 'إلغاء'}
-        ]
-    }, function(buttonId) {
-        if (buttonId === 'ok') {
-            // الاستخراج الرسمي والمباشر للـ ID الآمن المعتمد من تطبيق تيليجرام فورياً
-            let userId = 0;
-            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                userId = tg.initDataUnsafe.user.id;
-            }
+            const playerID = document.getElementById('player-id-input').value.trim();
             
-            // حل بديل احتياطي في حال فتح البوت من المتصفح العادي كاختبار
-            if (!userId || userId === 0) {
-                let path = window.location.pathname.rstrip('/');
-                const parts = path.split('/');
-                let lastPart = parts[parts.length - 1];
-                if (lastPart.includes('?')) lastPart = lastPart.split('?')[0];
-                userId = parseInt(lastPart) || 0;
+            if (!playerID) {
+                tg.showAlert("❌ عذراً! يرجى كتابة ID اللاعب أولاً في المربع الأزرق بالأعلى قبل الشراء.");
+                return;
             }
-
-            if (!userId || userId === 0) {
-                tg.showAlert("❌ فشل تحديد هوية المستخدم الرقمية، يرجى إعادة فتح المتجر.");
+            if (FIXED_BALANCE < price) {
+                tg.showAlert("❌ رصيدك الحالي غير كافٍ! يرجى تعبئة رصيدك أولاً عبر محفظة شام كاش بالأسفل.");
                 return;
             }
 
-            const currentHost = window.location.origin;
-            
-            fetch(`${currentHost}/api/buy`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({ user_id: userId, item: itemKey, player_id: playerID })
-            })
-            .then(res => {
-                if (!res.ok) throw new Error("Server communication error");
-                return res.json();
-            })
-            .then(resData => {
-                if (resData.success) {
-                    tg.showAlert("✅ تم تسجيل طلب الشراء بنجاح! راجع شات البوت الفوري.");
-                    tg.close();
-                } else {
-                    tg.showAlert("❌ خطأ من السيرفر: " + resData.message);
+            tg.showPopup({
+                title: 'تأكيد عملية الشراء',
+                message: `هل ترغب في اقتطاع قيمة ${price}$ وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
+                buttons: [
+                    {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
+                    {id: 'cancel', type: 'destructive', text: 'إلغاء'}
+                ]
+            }, function(buttonId) {
+                if (buttonId === 'ok') {
+                    if (!FIXED_USER_ID || FIXED_USER_ID === 0) {
+                        tg.showAlert("❌ فشل تحديد هوية المستخدم الرقمية، يرجى إعادة فتح المتجر.");
+                        return;
+                    }
+
+                    const currentHost = window.location.origin;
+                    
+                    fetch(`${currentHost}/api/buy`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ user_id: FIXED_USER_ID, item: itemKey, player_id: playerID })
+                    })
+                    .then(res => {
+                        if (!res.ok) throw new Error("Server CORS or Connection Error");
+                        return res.json();
+                    })
+                    .then(resData => {
+                        if (resData.success) {
+                            tg.showAlert("✅ تم تسجيل طلب الشراء بنجاح! راجع شات البوت الفوري.");
+                            tg.close();
+                        } else {
+                            tg.showAlert("❌ خطأ من السيرفر: " + resData.message);
+                        }
+                    })
+                    .catch((err) => {
+                        tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر وبدء التشغيل المستقر.");
+                    });
                 }
-            })
-            .catch((err) => {
-                tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر وبدء التشغيل المستقر.");
             });
         }
-    });
-}
-
     </script>
 </body>
 </html>
