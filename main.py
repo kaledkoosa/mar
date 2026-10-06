@@ -43,7 +43,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # استخراج صافي ومضمون منعاً للـ Tuples
+        balance = row[0]  # فك المصفوفة الثنائية فورياً لتمرير القيمة الرقمية النظيفة
     conn.close()
     return float(balance)
 
@@ -63,7 +63,7 @@ def get_total_users():
     conn.close()
     return count
 
-# --- استقبال تحديثات الـ Webhook الفورية ---
+# --- استقبال تحديثات الـ Webhook بنجاح ---
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -84,7 +84,6 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
-    # حقن الرصيد والـ ID بداخل أكواد الجافا سكريبت مباشرة بدلاً من قراءة النصوص لضمان السلامة المطلقة
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
@@ -103,7 +102,7 @@ def async_send_order(user_id, item, player_id):
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
+        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \ pickup\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
         bot.send_message(user_id, user_msg)
     except Exception as e:
         print(f"Async Notification Error: {str(e)}")
@@ -111,7 +110,6 @@ def async_send_order(user_id, item, player_id):
 @app.route('/api/buy', methods=['POST', 'OPTIONS'])
 def api_buy_item():
     if request.method == 'OPTIONS':
-        # معالجة طلبات الفحص المسبق لمتصفحات الجافا سكريبت لتخطي حظر CORS الحتمي
         response = jsonify({"success": True})
         response.headers.add("Access-Control-Allow-Origin", "*")
         response.headers.add("Access-Control-Allow-Headers", "Content-Type, Accept")
@@ -192,7 +190,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
-    # تنظيف فوري للرابط من أي شرطات زائدة مسببة لمشاكل المسارات الـ 404
     base_url = RENDER_WEB_URL.strip()
     while base_url.endswith('/'):
         base_url = base_url[:-1]
