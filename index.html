@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>متجر عبد البصير المعاصر</title>
-    <script src="https://telegram.org"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
             font-family: system-ui, -apple-system, sans-serif;
@@ -120,7 +120,6 @@
         tg.ready();
         tg.expand();
 
-        // قراءة الرصيد والحساب المحقونين من خادم بايثون كأرقام صافية ومباشرة دون أي تلاعب بالنصوص
         const FIXED_BALANCE = parseFloat("USER_BALANCE_MARKER") || 0.0;
         const FIXED_USER_ID = parseInt("USER_ID_MARKER") || 0;
 
@@ -161,7 +160,7 @@
 
                     const currentHost = window.location.origin;
                     
-                    fetch(`${currentHost}/api/buy`, {
+                    fetch(currentHost + '/api/buy', {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json',
@@ -170,7 +169,7 @@
                         body: JSON.stringify({ user_id: FIXED_USER_ID, item: itemKey, player_id: playerID })
                     })
                     .then(res => {
-                        if (!res.ok) throw new Error("Server CORS or Connection Error");
+                        if (!res.ok) throw new Error("Server Response Error");
                         return res.json();
                     })
                     .then(resData => {
@@ -182,7 +181,7 @@
                         }
                     })
                     .catch((err) => {
-                        tg.showAlert("❌ فشل الاتصال بالسيرفر. تأكد من تفعيل السيرفر وبدء التشغيل المستقر.");
+                        tg.showAlert("❌ فشل الاتصال بالسيرفر الداخلي. يرجى مراجعة إدارة المتجر لتفعيل الشحن.");
                     });
                 }
             });
