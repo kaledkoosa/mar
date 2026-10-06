@@ -11,7 +11,7 @@ app = Flask('')
 # --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://mar-eox3.onrender.com")
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -33,7 +33,6 @@ def init_db():
 
 init_db()
 
-# 🔥 الفكس الحتمي والنهائي لمشكلة الـ tuple وشاشة الخطأ:
 def get_user_balance(user_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -44,7 +43,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # هنا تم التعديل الحاسم: استخراج العنصر الأول الصافي من المصفوفة لمنع الانهيار
+        balance = row[0]  
     conn.close()
     return float(balance)
 
@@ -60,9 +59,17 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0 # فك المصفوفة هنا أيضاً لضمان السلامة المطلقة
+    count = row[0] if row else 0 
     conn.close()
     return count
+
+# --- استقبال تحديثات الـ Webhook من خوادم تيليجرام برد مستقر ---
+@app.route('/' + BOT_TOKEN, methods=['POST'])
+def get_message():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "OK", 200
 
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
@@ -80,10 +87,8 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
     return render_template_string(html_content)
 
-# معالجة الطلبات في الخلفية لمنع تجميد خادم Flask أثناء إرسال رسائل تيليجرام
 def async_send_order(user_id, item, player_id):
     try:
-        # 1. إرسال الإشعار الفوري لك كآدمن
         admin_msg = (
             f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n"
             f"👤 حساب المشتري ID: `{user_id}`\n"
@@ -93,11 +98,9 @@ def async_send_order(user_id, item, player_id):
         )
         bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
         
-        # 2. خصم الرصيد من الحساب بعد الاطمئنان لنجاح إرسال الإشعار
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        # 3. إشعار العميل بنجاح العملية
         user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
         bot.send_message(user_id, user_msg)
     except Exception as e:
@@ -122,7 +125,6 @@ def api_buy_item():
         if balance < item["price"]:
             return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
             
-        # إطلاق خيط معالجة الطلب لضمان سرعة استجابة الزر وتخطي الحظر
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
             
         response = jsonify({"success": True})
@@ -135,11 +137,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق بنظام Webhook!"
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -151,8 +149,8 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            target_id = int(parts[1]) # تصحيح الفهرس البرمي للمستخدم
-            amount = float(parts[2])  # تصحيح الفهرس البرمي للمبلغ
+            target_id = int(parts[1]) 
+            amount = float(parts[2])  
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
@@ -183,7 +181,10 @@ def admin_panel(message):
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
-    web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
+    
+    # حماية للتأكد من عدم تكرار الشرطة المائلة بالخطأ في الرابط
+    clean_url = RENDER_WEB_URL.rstrip('/')
+    web_app_url = f"{clean_url}/shop/{user_id}"
     
     welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
     
@@ -202,11 +203,11 @@ def process_deposit_receipt(message):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    print("Independent Mini App Server is running...")
-    
     if BOT_TOKEN != "placeholder_token":
-        bot.delete_webhook()
-        bot.infinity_polling()
+        bot.remove_webhook()
+        clean_url = RENDER_WEB_URL.rstrip('/')
+        bot.set_webhook(url=f"{clean_url}/{BOT_TOKEN}")
+        print("Webhook integrated smoothly.")
+        
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
