@@ -43,7 +43,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  
+        balance = row[0]  # التعديل الحاسم: استخراج العنصر الأول الصافي لمنع انهيار مقارنة الواجهة
     conn.close()
     return float(balance)
 
@@ -59,11 +59,11 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0 
+    count = row[0] if row else 0 # فك مصفوفة التعداد لضمان سلامة لوحة التحكم
     conn.close()
     return count
 
-# --- استقبال تحديثات الـ Webhook من خوادم تيليجرام برد مستقر ---
+# --- استقبال تحديثات الـ Webhook الفورية ---
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -137,7 +137,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق بنظام Webhook!"
+    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق بنظام Webhook التلقائي!"
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -182,7 +182,6 @@ def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
-    # حماية للتأكد من عدم تكرار الشرطة المائلة بالخطأ في الرابط
     clean_url = RENDER_WEB_URL.rstrip('/')
     web_app_url = f"{clean_url}/shop/{user_id}"
     
