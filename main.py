@@ -43,7 +43,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # التعديل الحاسم: استخراج العنصر الأول الصافي لمنع انهيار مقارنة الواجهة
+        balance = row[0]  # استخراج صافي ومضمون منعاً للـ Tuples
     conn.close()
     return float(balance)
 
@@ -59,7 +59,7 @@ def get_total_users():
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     row = cursor.fetchone()
-    count = row[0] if row else 0 # فك مصفوفة التعداد لضمان سلامة لوحة التحكم
+    count = row[0] if row else 0
     conn.close()
     return count
 
@@ -84,7 +84,9 @@ def shop_interface(user_id):
     except:
         return "Error: index.html not found."
     
+    # حقن الرصيد والـ ID بداخل أكواد الجافا سكريبت مباشرة بدلاً من قراءة النصوص لضمان السلامة المطلقة
     html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
+    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
 
 def async_send_order(user_id, item, player_id):
@@ -106,8 +108,16 @@ def async_send_order(user_id, item, player_id):
     except Exception as e:
         print(f"Async Notification Error: {str(e)}")
 
-@app.route('/api/buy', methods=['POST'])
+@app.route('/api/buy', methods=['POST', 'OPTIONS'])
 def api_buy_item():
+    if request.method == 'OPTIONS':
+        # معالجة طلبات الفحص المسبق لمتصفحات الجافا سكريبت لتخطي حظر CORS الحتمي
+        response = jsonify({"success": True})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Accept")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        return response
+
     try:
         data = request.json
         if not data:
@@ -182,8 +192,12 @@ def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
-    clean_url = RENDER_WEB_URL.rstrip('/')
-    web_app_url = f"{clean_url}/shop/{user_id}"
+    # تنظيف فوري للرابط من أي شرطات زائدة مسببة لمشاكل المسارات الـ 404
+    base_url = RENDER_WEB_URL.strip()
+    while base_url.endswith('/'):
+        base_url = base_url[:-1]
+        
+    web_app_url = f"{base_url}/shop/{user_id}"
     
     welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
     
@@ -204,8 +218,10 @@ def process_deposit_receipt(message):
 if __name__ == "__main__":
     if BOT_TOKEN != "placeholder_token":
         bot.remove_webhook()
-        clean_url = RENDER_WEB_URL.rstrip('/')
-        bot.set_webhook(url=f"{clean_url}/{BOT_TOKEN}")
+        base_url = RENDER_WEB_URL.strip()
+        while base_url.endswith('/'):
+            base_url = base_url[:-1]
+        bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
         print("Webhook integrated smoothly.")
         
     port = int(os.environ.get("PORT", 8080))
