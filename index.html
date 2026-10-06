@@ -120,8 +120,26 @@
         tg.ready();
         tg.expand();
 
-        const rawBalance = document.getElementById("display-balance").innerText;
-        const REAL_BALANCE = parseFloat(rawBalance) || 0.0;
+        function getRealBalance() {
+            const rawBalance = document.getElementById("display-balance").innerText;
+            return parseFloat(rawBalance) || 0.0;
+        }
+
+        // دالة مبرمجة هندسياً لقص الـ ID ومنع الأخطاء الناتجة عن بارامترات تيليجرام المشفرة
+        function getCleanUserId() {
+            let path = window.location.pathname; 
+            if (path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            const parts = path.split('/');
+            let lastPart = parts[parts.length - 1];
+            
+            // التخلص الكامل من علامات الاستفهام وما بعدها (?tgWebAppStartParam)
+            if (lastPart.includes('?')) {
+                lastPart = lastPart.split('?')[0];
+            }
+            return parseInt(lastPart) || 0;
+        }
 
         function copyWallet(elementId) {
             const addressText = document.getElementById(elementId).innerText;
@@ -134,28 +152,34 @@
 
         function buyItem(itemKey, price) {
             const playerID = document.getElementById('player-id-input').value.trim();
+            const currentBalance = getRealBalance();
             
             if (!playerID) {
                 tg.showAlert("❌ عذراً! يرجى كتابة ID اللاعب أولاً في المربع الأزرق بالأعلى قبل الشراء.");
                 return;
             }
-            if (REAL_BALANCE < price) {
+            if (currentBalance < price) {
                 tg.showAlert("❌ رصيدك الحالي غير كافٍ! يرجى تعبئة رصيدك أولاً عبر محفظة شام كاش بالأسفل.");
                 return;
             }
 
             tg.showPopup({
                 title: 'تأكيد عملية الشراء',
-                message: `هل ترغب في اقتطاع بقيمة ${price}$ وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
+                message: `هل ترغب في اقتطاع قيمة ${price}$ وشحن الباقة مباشرة للـ ID: ${playerID}؟`,
                 buttons: [
                     {id: 'ok', type: 'default', text: 'تأكيد وشراء'},
                     {id: 'cancel', type: 'destructive', text: 'إلغاء'}
                 ]
             }, function(buttonId) {
                 if (buttonId === 'ok') {
-                    const userId = window.location.pathname.split('/').pop();
+                    const userId = getCleanUserId();
                     const currentHost = window.location.origin;
                     
+                    if (!userId || userId === 0) {
+                        tg.showAlert("❌ فشل تحديد هوية المستخدم الرقمية، يرجى إعادة فتح المتجر.");
+                        return;
+                    }
+
                     fetch(`${currentHost}/api/buy`, {
                         method: 'POST',
                         headers: { 
@@ -173,7 +197,7 @@
                             tg.showAlert("✅ تم تسجيل طلب الشراء بنجاح! راجع شات البوت الفوري.");
                             tg.close();
                         } else {
-                            tg.showAlert("❌ خطأ: " + resData.message);
+                            tg.showAlert("❌ خطأ من السيرفر: " + resData.message);
                         }
                     })
                     .catch((err) => {
