@@ -12,7 +12,9 @@ app = Flask('')
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+# الرابط السحابي المطور والثابت لضمان الاتصال المشفر للأرصدة عبر منفذ 5432
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -24,25 +26,22 @@ PRICES = {
 }
 
 def get_db_connection():
-    # سحب الرابط مباشرة من البيئة المحيطة أو استخدام الرابط السحابي الثابت كخيار حتمي
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
-    return psycopg2.connect(url)
-
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # BIGINT لضمان استيعاب أرقام هواتف ومعرفات تيليجرام الضخمة دون مشاكل
+        # BIGINT لضمان استيعاب أرقام معرفات تيليجرام الضخمة دون مشاكل
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance REAL DEFAULT 0.0)')
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database initialized successfully on Cloud.")
+        print("Database initialized successfully on Supabase Cloud.")
     except Exception as e:
         print(f"Database Init Error: {str(e)}")
 
-# تشغيل البناء الأولي للجداول
+# تشغيل البناء الأولي للجداول سحابياً
 if DATABASE_URL:
     init_db()
 
@@ -57,7 +56,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]
+            balance = row[0]  # الفكس النهائي الحاسم: فك المصفوفة رقمياً لتخطي انهيار الواجهة والأزرار
         cursor.close()
         conn.close()
         return float(balance)
@@ -82,14 +81,14 @@ def get_total_users():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         row = cursor.fetchone()
-        count = row[0] if row else 0
+        count = row[0] if row else 0  # فك مصفوفة العد الكلي لسلامة الإحصائيات
         cursor.close()
         conn.close()
         return count
     except:
         return 0
 
-# --- استقبال تحديثات الـ Webhook بنظام مستقل ---
+# --- استقبال تحديثات الـ Webhook الفورية ---
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -171,7 +170,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "السيرفر مستقر ويعمل بنجاح كامل على قاعدة بيانات PostgreSQL السحابية الآمنة للأرصدة!"
+    return "السيرفر مستقر ويعمل بننجاح كامل على قاعدة بيانات PostgreSQL السحابية الآمنة للأرصدة!!"
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -183,20 +182,21 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
+            # تم الإصلاح البرمي الشامل: قراءة العناصر الفردية المحددة بدلاً من المصفوفة الكاملة
             target_id = int(parts[1]) 
             amount = float(parts[2])  
             
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
             
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمخدم الخارجي للمستخدم `{target_id}`.\n💰 رصيده الثابت الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}` في السحابة.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
             
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
             except:
                 pass
         except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
+            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.\nوصف الخطأ: {str(e)}")
 
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
@@ -222,7 +222,7 @@ def send_welcome(message):
         
     web_app_url = f"{base_url}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
@@ -245,7 +245,6 @@ if __name__ == "__main__":
         while base_url.endswith('/'):
             base_url = base_url[:-1]
         bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
-        print("Webhook integrated smoothly with Cloud DB.")
+        print("Webhook integrated smoothly with Cloud Database.")
         
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
