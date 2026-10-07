@@ -1,6 +1,6 @@
 import telebot
 from telebot import types
-import sqlite3
+import psycopg2  # الاعتماد على قاعدة البيانات الخارجية لمنع التصفير نهائياً
 import os
 import threading
 import json
@@ -12,6 +12,7 @@ app = Flask('')
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -22,48 +23,71 @@ PRICES = {
     "ff_310": {"name": "310 جوهرة Free Fire", "price": 3.0}
 }
 
-DB_PATH = "/data/manual_shop.db" if os.path.exists("/data") else "manual_shop.db"
+def get_db_connection():
+    # دالة ذكية للربط مع السيرفر الخارجي بأمان
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)')
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # BIGINT لضمان استيعاب أرقام هواتف ومعرفات تيليجرام الضخمة دون مشاكل
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance REAL DEFAULT 0.0)')
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Database initialized successfully on Cloud.")
+    except Exception as e:
+        print(f"Database Init Error: {str(e)}")
 
-init_db()
+# تشغيل البناء الأولي للجداول
+if DATABASE_URL:
+    init_db()
 
 def get_user_balance(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    if row is None:
-        cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, 0.0)", (user_id,))
-        conn.commit()
-        balance = 0.0
-    else:
-        balance = row[0]  # فك المصفوفة الثنائية فورياً لتمرير القيمة الرقمية النظيفة
-    conn.close()
-    return float(balance)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
+        row = cursor.fetchone()
+        if row is None:
+            cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
+            conn.commit()
+            balance = 0.0
+        else:
+            balance = row[0]
+        cursor.close()
+        conn.close()
+        return float(balance)
+    except Exception as e:
+        print(f"Error fetching balance: {str(e)}")
+        return 0.0
 
 def update_user_balance(user_id, amount):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error updating balance: {str(e)}")
 
 def get_total_users():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    row = cursor.fetchone()
-    count = row[0] if row else 0
-    conn.close()
-    return count
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        row = cursor.fetchone()
+        count = row[0] if row else 0
+        cursor.close()
+        conn.close()
+        return count
+    except:
+        return 0
 
-# --- استقبال تحديثات الـ Webhook بنجاح ---
+# --- استقبال تحديثات الـ Webhook بنظام مستقل ---
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -102,7 +126,7 @@ def async_send_order(user_id, item, player_id):
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \ pickup\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
+        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \$\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
         bot.send_message(user_id, user_msg)
     except Exception as e:
         print(f"Async Notification Error: {str(e)}")
@@ -145,7 +169,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق بنظام Webhook التلقائي!"
+    return "السيرفر مستقر ويعمل بنجاح كامل على قاعدة بيانات PostgreSQL السحابية الآمنة للأرصدة!"
 
 @bot.message_handler(commands=['pay'])
 def pay_user_balance(message):
@@ -163,7 +187,7 @@ def pay_user_balance(message):
             update_user_balance(target_id, amount)
             new_balance = get_user_balance(target_id)
             
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
+            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمخدم الخارجي للمستخدم `{target_id}`.\n💰 رصيده الثابت الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
             
             try:
                 bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
@@ -179,7 +203,7 @@ def admin_panel(message):
         total_users = get_total_users()
         admin_text = (
             f"👑 **لوحة تحكم الإدارة لمتجر عبد البصير** 👑\n\n"
-            f"👥 إجمالي المستخدمين: `{total_users}` مستخدم.\n\n"
+            f"👥 إجمالي المستخدمين في السحابة: `{total_users}` مستخدم.\n\n"
             f"💡 **لشحن رصيد مستخدم:**\n"
             f"`/pay [ID المستخدم] [المبلغ]`"
         )
@@ -196,7 +220,7 @@ def send_welcome(message):
         
     web_app_url = f"{base_url}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
@@ -213,13 +237,13 @@ def process_deposit_receipt(message):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    if BOT_TOKEN != "placeholder_token":
+    if BOT_TOKEN != "placeholder_token" and DATABASE_URL:
         bot.remove_webhook()
         base_url = RENDER_WEB_URL.strip()
         while base_url.endswith('/'):
             base_url = base_url[:-1]
         bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
-        print("Webhook integrated smoothly.")
+        print("Webhook integrated smoothly with Cloud DB.")
         
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
