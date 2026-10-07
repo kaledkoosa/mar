@@ -26,7 +26,6 @@ PRICES = {
 }
 
 def get_db_connection():
-    # استخدام الرابط السحابي المطور والثابت مباشرة لتفادي مشاكل القراءة الصامتة
     url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
     return psycopg2.connect(url)
 
@@ -42,7 +41,6 @@ def init_db():
     except Exception as e:
         print(f"Database Init Error: {str(e)}")
 
-# تشغيل البناء الأولي للجداول سحابياً
 if DATABASE_URL:
     init_db()
 
@@ -82,7 +80,7 @@ def get_total_users():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         row = cursor.fetchone()
-        count = row[0] if row else 0  # فك المصفوفة هنا أيضاً لضمان السلامة المطلقة
+        count = row[0] if row else 0  # فك المصفوفة بشكل صحيح
         cursor.close()
         conn.close()
         return count
@@ -183,7 +181,7 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            # تم الإصلاح البرمي الشامل والنهائي لتفكيك مصفوفة الأمر
+            # تم تصحيح الفهارس البرمية للمصفوفة بدقة تامة
             target_id = int(parts[1]) 
             amount = float(parts[2])  
             
@@ -223,7 +221,7 @@ def send_welcome(message):
         
     web_app_url = f"{base_url}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
@@ -246,3 +244,7 @@ if __name__ == "__main__":
         while base_url.endswith('/'):
             base_url = base_url[:-1]
         bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
+        print("Webhook integrated smoothly with Cloud Database.")
+        
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
