@@ -24,8 +24,10 @@ PRICES = {
 }
 
 def get_db_connection():
-    # دالة ذكية للربط مع السيرفر الخارجي بأمان
-    return psycopg2.connect(DATABASE_URL)
+    # سحب الرابط مباشرة من البيئة المحيطة أو استخدام الرابط السحابي الثابت كخيار حتمي
+    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
+    return psycopg2.connect(url)
+
 
 def init_db():
     try:
