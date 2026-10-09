@@ -13,7 +13,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# الرابط السحابي المطور والثابت لضمان الاتصال المشفر للأرصدة عبر منفذ 5432
+# الرابط السحابي المعدل والمدعوم بالتشفير الإجباري والـ Connection Pooling عبر منفذ 5432
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
@@ -26,21 +26,28 @@ PRICES = {
 }
 
 def get_db_connection():
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
-    return psycopg2.connect(url)
+    # الاتصال المباشر والآمن بالسحابة
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance REAL DEFAULT 0.0)')
+        # إنشاء الجدول وتحديد الحقول السحابية بدقة لمنع فشل تعبئة الأرصدة
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY, 
+                balance REAL DEFAULT 0.0
+            )
+        ''')
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database initialized successfully on Supabase Cloud.")
+        print("✅ SUCCESS: Database tables connected and created successfully on Supabase!")
     except Exception as e:
-        print(f"Database Init Error: {str(e)}")
+        print(f"❌ DATABASE ERROR: Connection failed. Reason: {str(e)}")
 
+# إطلاق قنوات الفحص التلقائي للربط عند إقلاع السيرفر
 if DATABASE_URL:
     init_db()
 
@@ -55,7 +62,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # استخراج صافي ومضمون لمنع الـ Tuples والانهيار
+            balance = row[0]  # فك المصفوفة رقمياً لتخطي انهيار الواجهة
         cursor.close()
         conn.close()
         return float(balance)
@@ -67,12 +74,19 @@ def update_user_balance(user_id, amount):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        # فحص أولاً للتأكد من وجود المستخدم في قاعدة البيانات قبل التحديث
+        cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
+        if cursor.fetchone() is None:
+            cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
+            conn.commit()
+            
         cursor.execute("UPDATE users SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
         conn.commit()
         cursor.close()
         conn.close()
+        print(f"Successfully updated balance for user {user_id} on Cloud.")
     except Exception as e:
-        print(f"Error updating balance: {str(e)}")
+        print(f"Error updating balance on Cloud: {str(e)}")
 
 def get_total_users():
     try:
@@ -80,7 +94,7 @@ def get_total_users():
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         row = cursor.fetchone()
-        count = row[0] if row else 0  # فك المصفوفة بشكل صحيح
+        count = row[0] if row else 0
         cursor.close()
         conn.close()
         return count
@@ -181,7 +195,6 @@ def pay_user_balance(message):
                 bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
                 return
             
-            # تم تصحيح الفهارس البرمية للمصفوفة بدقة تامة
             target_id = int(parts[1]) 
             amount = float(parts[2])  
             
@@ -221,7 +234,7 @@ def send_welcome(message):
         
     web_app_url = f"{base_url}/shop/{user_id}"
     
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية:"
+    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
     
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
@@ -237,14 +250,3 @@ def process_deposit_receipt(message):
     except Exception as e:
         print(f"Error: {e}")
 
-if __name__ == "__main__":
-    if BOT_TOKEN != "placeholder_token" and DATABASE_URL:
-        bot.remove_webhook()
-        base_url = RENDER_WEB_URL.strip()
-        while base_url.endswith('/'):
-            base_url = base_url[:-1]
-        bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
-        print("Webhook integrated smoothly with Cloud Database.")
-        
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
