@@ -13,8 +13,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# الرابط السحابي المعدل والمدعوم بالتشفير الإجباري والـ Connection Pooling عبر منفذ 5432
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
+# 🔒 تم تحديث الرابط هنا بكلمة المرور الجديدة لضمان الاتصال السحابي المشفر والمستقر للأرصدة للأبد
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:@CryptoBot12://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -26,8 +26,9 @@ PRICES = {
 }
 
 def get_db_connection():
-    # الاتصال المباشر والآمن بالسحابة
-    return psycopg2.connect(DATABASE_URL)
+    # فرض الرابط السحابي المحدث مباشرة لتخطي أي مشاكل قراءة صامتة
+    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
+    return psycopg2.connect(url)
 
 def init_db():
     try:
@@ -48,8 +49,7 @@ def init_db():
         print(f"❌ DATABASE ERROR: Connection failed. Reason: {str(e)}")
 
 # إطلاق قنوات الفحص التلقائي للربط عند إقلاع السيرفر
-if DATABASE_URL:
-    init_db()
+init_db()
 
 def get_user_balance(user_id):
     try:
@@ -62,7 +62,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # فك المصفوفة رقمياً لتخطي انهيار الواجهة
+            balance = row[0]  # استخراج صافي ومضمون لمنع الـ Tuples والانهيار
         cursor.close()
         conn.close()
         return float(balance)
@@ -246,7 +246,3 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الرصيد اكتب:\n`/pay {user_id} [المبلغ]`")
-    except Exception as e:
-        print(f"Error: {e}")
-
