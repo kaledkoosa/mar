@@ -8,13 +8,13 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام من Render ---
+# --- جلب المتغيرات السرية بأمان تام من Render (تأكد من إضافتها في إعدادات Environment Variables) ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 الرابط السحابي الكوري المباشر والمشفر للأرصدة
-DATABASE_URL = "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com"
+# 🔒 تم نقل الرابط السري بالكامل إلى متغيرات البيئة لحمايته من التسريب
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://username:password@host:port/database")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -36,7 +36,7 @@ def init_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ SUCCESS: Connected to Supabase!")
+        print("✅ SUCCESS: Connected to Database!")
     except Exception as e:
         print(f"❌ DATABASE ERROR: {str(e)}")
 
@@ -53,14 +53,13 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # الفكس النهائي الحاسم: جلب العنصر الأول الصافي من المصفوفة لتحديث الرقم فوراً
+            balance = row[0]
         cursor.close()
         conn.close()
         return float(balance)
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error getting balance: {str(e)}")
         return 0.0
-
 
 def update_user_balance(user_id, amount):
     try:
@@ -74,21 +73,10 @@ def update_user_balance(user_id, amount):
         conn.commit()
         cursor.close()
         conn.close()
+        return True
     except Exception as e:
-        print(f"Error: {str(e)}")
-
-def get_total_users():
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM users")
-        row = cursor.fetchone()
-        count = row[0] if row else 0
-        cursor.close()
-        conn.close()
-        return count
-    except:
-        return 0
+        print(f"Error updating balance: {str(e)}")
+        return False
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
@@ -126,7 +114,7 @@ def async_send_order(user_id, item, player_id):
         user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n🎮 الـ ID: `{player_id}`\n💰 رصيدك: {new_balance} دولار"
         bot.send_message(user_id, user_msg)
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error in async_send_order: {str(e)}")
 
 @app.route('/api/buy', methods=['POST', 'OPTIONS'])
 def api_buy_item():
@@ -136,86 +124,68 @@ def api_buy_item():
         response.headers.add("Access-Control-Allow-Headers", "Content-Type, Accept")
         response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response
+    
     try:
         data = request.json
         if not data:
             return jsonify({"success": False, "message": "بيانات فارغة!"})
+            
         user_id = int(data.get("user_id"))
         item_key = data.get("item")
         player_id = data.get("player_id")
+        
         item = PRICES.get(item_key)
         if not item:
-            return jsonify({"success": False, "message": "الباقة غير مدعومة."})
-        balance = get_user_balance(user_id)
-        if balance < item["price"]:
-            return jsonify({"success": False, "message": "رصيدك غير كافٍ."})
+            return jsonify({"success": False, "message": "العنصر غير موجود!"})
+            
+        current_balance = get_user_balance(user_id)
+        if current_balance < item["price"]:
+            return jsonify({"success": False, "message": "عذراً، رصيدك غير كافٍ لإتمام هذه العملية!"})
+            
+        # تشغيل إرسال الطلب ومعالجة الخصم في الخلفية لمنع تعليق الاستجابة البرمجية
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
-        response = jsonify({"success": True})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
+        
+        return jsonify({"success": True, "message": "جاري معالجة طلبك بنجاح!"})
+        
     except Exception as e:
-        response = jsonify({"success": False, "message": str(e)})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
+        return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
 
-@app.route('/')
-def home():
-    return "السيرفر يعمل بنجاح كامل على قاعدة البيانات السحابية الكورية!!"
-
+# --- معالجة أوامر البوت (أمر الدفع المالي /pay) ---
 @bot.message_handler(commands=['pay'])
-def pay_user_balance(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        try:
-            parts = message.text.split()
-            if len(parts) < 3:
-                bot.send_message(message.chat.id, "⚠️ الصيغة: `/pay [ID] [المبلغ]`", parse_mode="Markdown")
-                return
-            target_id = int(parts[1])
-            amount = float(parts[2])
-            update_user_balance(target_id, amount)
-            new_balance = get_user_balance(target_id)
-            bot.send_message(message.chat.id, f"✅ تم إضافة **{amount}** دولار للمستخدم `{target_id}`.\n💰 رصيده الحالي: **{new_balance}** دولار", parse_mode="Markdown")
-            try:
-                bot.send_message(target_id, f"🎉 تم إيداع **{amount}** دولار لحسابك بنجاح.\n💰 رصيدك الحالي: **{new_balance}** دولار", parse_mode="Markdown")
-            except:
-                pass
-        except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ: {str(e)}")
-
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        total_users = get_total_users()
-        admin_text = f"👑 **لوحة تحكم الإدارة** 👑\n\n👥 إجمالي المستخدمين: `{total_users}`"
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    balance = get_user_balance(user_id)
-    # الفكس السطري السلس والنظيف بدون حط دالات تكرار أو مسافات مسببة للمشاكل:
-    clean_url = RENDER_WEB_URL.strip().rstrip('/')
-    web_app_url = f"{clean_url}/shop/{user_id}"
-    welcome_text = f"👋 أهلاً بك في المتجر!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر أدناه لفتح المتجر الإلكتروني:"
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
-
-@bot.message_handler(content_types=['photo'])
-def process_deposit_receipt(message):
-    user_id = message.from_user.id
-    photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها من قبل الإدارة.")
+def handle_pay_command(message):
     try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 إيصال جديد:\n🆔 ID: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nللشحن اكتب:\n`/pay {user_id} [المبلغ]`")
+        # تقسيم نص الرسالة لاستخراج المعطيات: /pay ID AMOUNT
+        parts = message.text.split()
+        if len(parts) != 3:
+            bot.reply_to(message, "⚠️ **الصيغة الخاطئة!**\nالرجاء الاستخدام كالتالي:\n`/pay [ID] [المبلغ]`")
+            return
+            
+        target_user_id = int(parts[1])
+        amount = float(parts[2])
+        
+        if amount <= 0:
+            bot.reply_to(message, "❌ لا يمكن تحويل مبلغ يساوي أو أقل من صفر!")
+            return
+            
+        # تحديث الرصيد في قاعدة البيانات
+        if update_user_balance(target_user_id, amount):
+            new_balance = get_user_balance(target_user_id)
+            
+            # إرسال رسالة التأكيد للمستخدم المستهدف والمسؤول
+            success_msg = f"✅ تم إضافة {amount} دولار للمستخدم `{target_user_id}`\n💰 رصيده الحالي: {new_balance} دولار"
+            bot.send_message(message.chat.id, success_msg)
+            
+            if target_user_id != message.chat.id:
+                bot.send_message(target_user_id, f"🎉 تم إيداع {amount} دولار لحسابك بنجاح.\n💰 رصيدك الحالي: {new_balance} دولار")
+        else:
+            bot.reply_to(message, "❌ فشل تحديث الرصيد، يرجى التحقق من اتصال قاعدة البيانات.")
+            
+    except ValueError:
+        bot.reply_to(message, "❌ خطأ: يرجى التأكد من كتابة ID والمبلغ كأرقام صحيحة.")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in pay command: {str(e)}")
 
 if __name__ == "__main__":
-    bot.remove_webhook()
-    clean_url = RENDER_WEB_URL.strip().rstrip('/')
-    bot.set_webhook(url=f"{clean_url}/{BOT_TOKEN}")
-    port = int(os.environ.get("PORT", 8080))
+    # تشغيل سيرفر Flask على المنفذ الافتراضي لـ Render
+    port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
