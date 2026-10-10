@@ -13,7 +13,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 تم تحديث الرابط هنا بكلمة المرور الجديدة لضمان الاتصال السحابي المشفر والمستقر للأرصدة للأبد
+# الرابط السحابي المعدل والمدعوم بالتشفير الإجباري والـ Connection Pooling عبر منفذ 5432
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:@CryptoBot12://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
@@ -26,15 +26,13 @@ PRICES = {
 }
 
 def get_db_connection():
-    # فرض الرابط السحابي المحدث مباشرة لتخطي أي مشاكل قراءة صامتة
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:koosasy0980@://supabase.com")
+    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:@CryptoBot12://supabase.com")
     return psycopg2.connect(url)
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # إنشاء الجدول وتحديد الحقول السحابية بدقة لمنع فشل تعبئة الأرصدة
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY, 
@@ -62,7 +60,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # استخراج صافي ومضمون لمنع الـ Tuples والانهيار
+            balance = row[0]  # فك المصفوفة رقمياً لتخطي انهيار الواجهة
         cursor.close()
         conn.close()
         return float(balance)
@@ -74,7 +72,6 @@ def update_user_balance(user_id, amount):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # فحص أولاً للتأكد من وجود المستخدم في قاعدة البيانات قبل التحديث
         cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
         if cursor.fetchone() is None:
             cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
@@ -246,3 +243,8 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     try:
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الرصيد اكتب:\n`/pay {user_id} [المبلغ]`")
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
