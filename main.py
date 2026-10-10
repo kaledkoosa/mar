@@ -1,10 +1,10 @@
-import telebot
-from telebot import types
-import psycopg2  
 import os
 import threading
 import json
+import psycopg2  
 from flask import Flask, render_template_string, request, jsonify
+import telebot
+from telebot import types
 
 app = Flask('')
 
@@ -145,6 +145,13 @@ def async_send_order(user_id, item, player_id):
         bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
         
         update_user_balance(user_id, -item["price"])
-        new_balance = get_user_balance(user_id) # تم تصحيح القوس وإغلاقه هنا بنجاح
+        new_balance = get_user_balance(user_id)
+        print(f"✅ Success: Order processed for {user_id}. New balance is {new_balance}")
     except Exception as e:
-        print(f"Error processing order: {str(e)}")
+        print(f"❌ Error processing order: {str(e)}")
+
+# --- تشغيل التطبيق بالمنفذ الديناميكي لـ Render ---
+if __name__ == "__main__":
+    # Render يمرر المنفذ تلقائياً عبر متغير بيئة يسمى PORT
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
