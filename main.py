@@ -12,13 +12,14 @@ app = Flask('')
 # --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://mar-eox3.onrender.com")
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 رابط قاعدة البيانات يتم جلبه من متغيرات البيئة لحمايته
+# 🔒 رابط قاعدة البيانات يتم جلبه من متغيرات البيئة لحمايته من الاختراق والتسريب
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
+# قائمة أسعار وباقات المنتجات المتوفرة في المتجر
 PRICES = {
     "pubg_60": {"name": "60 شدة PUBG", "price": 1.0},
     "pubg_325": {"name": "325 شدة PUBG", "price": 5.0},
@@ -41,6 +42,7 @@ def init_db():
     except Exception as e:
         print(f"❌ DATABASE ERROR: {str(e)}")
 
+# تهيئة قاعدة البيانات عند بدء التشغيل إذا كان الرابط متوفراً
 if DATABASE_URL:
     init_db()
 
@@ -85,6 +87,7 @@ def update_user_balance(user_id, amount):
 def home():
     return "🚀 السيرفر يعمل بنجاح والبوت متصل بقاعدة البيانات!", 200
 
+# استقبال وتمرير تحديثات تليجرام عبر الـ Webhook
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -92,6 +95,7 @@ def get_message():
     bot.process_new_updates([update])
     return "OK", 200
 
+# واجهة المتجر الإلكتروني المخصصة للمستخدم
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
     try:
@@ -107,6 +111,7 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
 
+# معالجة عمليات الشحن وإشعار الإدارة والمستخدم في الخلفية
 def async_send_order(user_id, item, player_id):
     try:
         admin_msg = (
@@ -123,6 +128,7 @@ def async_send_order(user_id, item, player_id):
     except Exception as e:
         print(f"Error in async_send_order: {str(e)}")
 
+# الاستجابة البرمجية لطلبات الشراء القادمة من واجهة الويب
 @app.route('/api/buy', methods=['POST', 'OPTIONS'])
 def api_buy_item():
     if request.method == 'OPTIONS':
@@ -155,6 +161,32 @@ def api_buy_item():
     except Exception as e:
         return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
 
+# --- معالجة أمر بدء التشغيل والترحيب (/start) مع زر المتجر الفوري ---
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    try:
+        user_id = message.chat.id
+        user_name = message.from_user.first_name if message.from_user.first_name else "عزيزي"
+        
+        welcome_text = (
+            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير**!\n\n"
+            f"🛒 يمكنك الآن شحن شدات ببجي وجواهر فري فاير فورياً وبأفضل الأسعار.\n\n"
+            f"🆔 حسابك الرقمي: `{user_id}`\n"
+            f"قم بالضغط على الزر أدناه لفتح واجهة المتجر وشراء الباقات مباشرة 👇"
+        )
+        
+        user_shop_url = f"{RENDER_WEB_URL}/shop/{user_id}"
+        markup = types.InlineKeyboardMarkup()
+        
+        web_app_info = types.WebAppInfo(url=user_shop_url)
+        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=web_app_info)
+        markup.add(shop_button)
+        
+        bot.send_message(user_id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"Error in start command: {str(e)}")
+
 # --- معالجة أمر الدفع المالي الموجه للمستخدمين /pay ---
 @bot.message_handler(commands=['pay'])
 def handle_pay_command(message):
@@ -181,11 +213,11 @@ def handle_pay_command(message):
             success_msg = f"✅ تم إضافة {amount} دولار للمستخدم `{target_user_id}`\n💰 رصيده الحالي: {new_balance} دولار"
             bot.send_message(message.chat.id, success_msg)
             
-            # إشعار المستخدم المستهدف
+            # إشعار المستخدم المستهدف بنجاح عملية الإيداع
             try:
                 bot.send_message(target_user_id, f"🎉 تم إيداع {amount} دولار لحسابك بنجاح.\n💰 رصيدك الحالي: {new_balance} دولار")
             except:
-                pass  # في حال لم يقم المستخدم ببدء المحادثة مع البوت بعد
+                pass  
         else:
             bot.reply_to(message, "❌ فشل تحديث الرصيد، يرجى التحقق من اتصال قاعدة البيانات.")
             
@@ -194,7 +226,7 @@ def handle_pay_command(message):
     except Exception as e:
         print(f"Error in pay command: {str(e)}")
 
-# دالة لتسجيل الـ Webhook تلقائياً عند بدء التشغيل
+# دالة لتسجيل الـ Webhook تلقائياً في سيرفرات تليجرام عند تشغيل التطبيق
 def set_webhook():
     try:
         webhook_url = f"{RENDER_WEB_URL}/{BOT_TOKEN}"
@@ -205,41 +237,9 @@ def set_webhook():
         print(f"❌ Failed to set Webhook: {str(e)}")
 
 if __name__ == "__main__":
-    # تشغيل الـ Webhook في خيط منفصل لتجنب تعليق السيرفر
+    # تشغيل تهيئة الـ Webhook في خيط منفصل لتجنب تأخير إقلاع السيرفر
     threading.Thread(target=set_webhook).start()
-    # --- معالجة أمر بدء التشغيل والترحيب (/start) مع زر المتجر الفوري ---
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    try:
-        user_id = message.chat.id
-        user_name = message.from_user.first_name if message.from_user.first_name else "عزيزي"
-        
-        # إنشاء نص الترحيب
-        welcome_text = (
-            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير**!\n\n"
-            f"🛒 يمكنك الآن شحن شدات ببجي وجواهر فري فاير فورياً وبأفضل الأسعار.\n\n"
-            f"🆔 حسابك الرقمي: `{user_id}`\n"
-            f"قم بالضغط على الزر أدناه لفتح واجهة المتجر وشراء الباقات مباشرة 👇"
-        )
-        
-        # بناء رابط المتجر المخصص للمستخدم بناءً على الـ ID الخاص به
-        # سيقوم الرابط بفتح الواجهة المبنية داخل السيرفر وتمرير بياناته تلقائياً
-        user_shop_url = f"{RENDER_WEB_URL}/shop/{user_id}"
-        
-        # إنشاء لوحة التحكم والأزرار المدمجة
-        markup = types.InlineKeyboardMarkup()
-        
-        # إضافة زر الـ WebApp لفتح المتجر بداخل تليجرام مباشرة
-        web_app_info = types.WebAppInfo(url=user_shop_url)
-        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=web_app_info)
-        
-        markup.add(shop_button)
-        
-        # إرسال الرسالة للمستخدم
-        bot.send_message(user_id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
-        
-    except Exception as e:
-        print(f"Error in start command: {str(e)}")
-
+    
+    # تشغيل سيرفر Flask على المنفذ المخصص من Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
