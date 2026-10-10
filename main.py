@@ -238,3 +238,13 @@ def process_receipt_submission(message):
 
 # معالجة تفاعل الآدمن مع طلبات الشحن
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_prompt_"))
+def admin_prompt_amount(call):
+    if call.message.chat.id != ADMIN_CHAT_ID:
+        return
+    try:
+        target_user_id = call.data.split("_")[-1]
+        msg = bot.send_message(ADMIN_CHAT_ID, f"يرجى كتابة القيمة المراد إضافتها لحساب المستخدم `{target_user_id}` **بالدولار** مباشرة (مثال: 5 أو 1.5):")
+        bot.register_next_step_handler(msg, lambda m: execute_admin_deposit(m, target_user_id))
+    except Exception as e:
+        print(f"Error in admin prompt: {str(e)}")
+
