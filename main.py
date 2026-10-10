@@ -13,13 +13,15 @@ app = Flask('')
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
-
-# 🔒 رابط قاعدة البيانات يتم جلبه من متغيرات البيئة لحمايته من الاختراق والتسريب
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+# 💳 بيانات محفظة شام كاش الخاصة بك استقبال الأموال
+SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  # ضع رقم حسابك هنا
+SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "اسم صاحب الحساب") # اسم الحساب الثنائي أو الثلاثي
+USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) # سعر صرف الدولار مقابل الليرة السورية داخل البوت
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
-# قائمة أسعار وباقات المنتجات المتوفرة في المتجر
 PRICES = {
     "pubg_60": {"name": "60 شدة PUBG", "price": 1.0},
     "pubg_325": {"name": "325 شدة PUBG", "price": 5.0},
@@ -42,7 +44,6 @@ def init_db():
     except Exception as e:
         print(f"❌ DATABASE ERROR: {str(e)}")
 
-# تهيئة قاعدة البيانات عند بدء التشغيل إذا كان الرابط متوفراً
 if DATABASE_URL:
     init_db()
 
@@ -57,7 +58,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # ✅ تم الإصلاح: جلب القيمة الرقمية من الـ Tuple مباشرة
+            balance = row[0]
         cursor.close()
         conn.close()
         return float(balance)
@@ -82,12 +83,10 @@ def update_user_balance(user_id, amount):
         print(f"Error updating balance: {str(e)}")
         return False
 
-# 🛠️ ✅ تم الإصلاح: إضافة المسار الرئيسي لمنع ظهور خطأ 404 (غير موجود) في المتصفح
 @app.route('/')
 def home():
-    return "🚀 السيرفر يعمل بنجاح والبوت متصل بقاعدة البيانات!", 200
+    return "🚀 سيرفر متجر عبد البصير يعمل بنجاح بنظام إيداع شام كاش اليدوي!", 200
 
-# استقبال وتمرير تحديثات تليجرام عبر الـ Webhook
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -95,7 +94,6 @@ def get_message():
     bot.process_new_updates([update])
     return "OK", 200
 
-# واجهة المتجر الإلكتروني المخصصة للمستخدم
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
     try:
@@ -111,7 +109,6 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
 
-# معالجة عمليات الشحن وإشعار الإدارة والمستخدم في الخلفية
 def async_send_order(user_id, item, player_id):
     try:
         admin_msg = (
@@ -123,12 +120,11 @@ def async_send_order(user_id, item, player_id):
         bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
-        user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n🎮 الـ ID: `{player_id}`\n💰 رصيدك: {new_balance} دولار"
+        user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n🎮 الـ ID: `{player_id}`\n💰 رصيدك المتبقي: {new_balance} دولار"
         bot.send_message(user_id, user_msg)
     except Exception as e:
         print(f"Error in async_send_order: {str(e)}")
 
-# الاستجابة البرمجية لطلبات الشراء القادمة من واجهة الويب
 @app.route('/api/buy', methods=['POST', 'OPTIONS'])
 def api_buy_item():
     if request.method == 'OPTIONS':
@@ -153,7 +149,7 @@ def api_buy_item():
             
         current_balance = get_user_balance(user_id)
         if current_balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً، رصيدك غير كافٍ لإتمام هذه العملية!"})
+            return jsonify({"success": False, "message": "عذراً، رصيدك غير كافٍ لإتمام هذه العملية! يرجى شحن حسابك أولاً."})
             
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
         return jsonify({"success": True, "message": "جاري معالجة طلبك بنجاح!"})
@@ -161,7 +157,7 @@ def api_buy_item():
     except Exception as e:
         return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
 
-# --- معالجة أمر بدء التشغيل والترحيب (/start) مع زر المتجر الفوري ---
+# --- معالجة أمر بدء التشغيل والترحيب (/start) ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -169,77 +165,76 @@ def send_welcome(message):
         user_name = message.from_user.first_name if message.from_user.first_name else "عزيزي"
         
         welcome_text = (
-            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير**!\n\n"
-            f"🛒 يمكنك الآن شحن شدات ببجي وجواهر فري فاير فورياً وبأفضل الأسعار.\n\n"
-            f"🆔 حسابك الرقمي: `{user_id}`\n"
-            f"قم بالضغط على الزر أدناه لفتح واجهة المتجر وشراء الباقات مباشرة 👇"
+            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير لشحن الألعاب لسوريا**!\n\n"
+            f"🛒 شحن فوري وآمن لشدات ببجي وجواهر فري فاير بالليرة السورية عبر شام كاش.\n\n"
+            f"🆔 حسابك الرقمي: `{user_id}`\n\n"
+            f"اضغط على الزر أدناه لشراء المنتجات، أو اختر شحن الرصيد من الأزرار المتاحة 👇"
         )
         
         user_shop_url = f"{RENDER_WEB_URL}/shop/{user_id}"
-        markup = types.InlineKeyboardMarkup()
+        markup = types.InlineKeyboardMarkup(row_width=1)
         
-        web_app_info = types.WebAppInfo(url=user_shop_url)
-        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=web_app_info)
-        markup.add(shop_button)
+        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=user_shop_url))
+        deposit_button = types.InlineKeyboardButton(text="💳 شحن رصيد حسابي (شام كاش)", callback_data="sham_cash_deposit")
         
+        markup.add(shop_button, deposit_button)
         bot.send_message(user_id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
         
     except Exception as e:
         print(f"Error in start command: {str(e)}")
 
-# --- معالجة أمر الدفع المالي الموجه للمستخدمين /pay ---
-@bot.message_handler(commands=['pay'])
-def handle_pay_command(message):
+# --- التعامل مع ضغطة زر شحن الرصيد من قبل العميل ---
+@bot.callback_query_handler(func=lambda call: call.data == "sham_cash_deposit")
+def process_deposit_click(call):
     try:
-        # التحقق من أن مرسل الأمر هو الآدمن المسؤول فقط لحماية البوت من التلاعب بالأرصدة
-        if message.chat.id != ADMIN_CHAT_ID:
-            bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص لإدارة المتجر فقط!")
-            return
+        user_id = call.message.chat.id
+        deposit_instruction = (
+            f"🇸🇾 **تعليمات الشحن اليدوي عبر محفظة شام كاش:**\n\n"
+            f"1️⃣ قم بالتحويل إلى رقم المحفظة التالي:\n"
+            f"📞 الرقم: `{SHAM_CASH_NUMBER}`\n"
+            f"👤 الاسم: **{SHAM_CASH_NAME}**\n\n"
+            f"2️⃣ قيمة الصرف المعتمدة في المتجر:\n"
+            f"💵 **1 دولار متجر = {int(USD_TO_SYP):,} ليرة سورية**\n\n"
+            f"3️⃣ بعد إتمام التحويل الناجح من تطبيقك، يرجى **إرسال رقم العملية (المرجع) في رسالة نصية مباشرة للبوت هنا**، أو إرسال صورة واضحة لإيصال التحويل لإتمام تأكيد طلبك."
+        )
+        # فتح مرحلة انتظار استقبال إشعار الشحن من العميل
+        msg = bot.send_message(user_id, text=deposit_instruction, parse_mode="Markdown")
+        bot.register_next_step_handler(msg, process_receipt_submission)
+    except Exception as e:
+        print(f"Error in deposit callback: {str(e)}")
 
-        parts = message.text.split()
-        if len(parts) != 3:
-            bot.reply_to(message, "⚠️ **الصيغة الصحيحة:**\n`/pay [ID] [المبلغ]`")
-            return
-            
-        target_user_id = int(parts[1])
-        amount = float(parts[2])
+# دالة استقبال إثبات التحويل المالي من العميل وإرساله للآدمن
+def process_receipt_submission(message):
+    try:
+        user_id = message.chat.id
+        user_name = message.from_user.first_name
         
-        if amount <= 0:
-            bot.reply_to(message, "❌ لا يمكن تحويل مبلغ يساوي أو أقل من صفر!")
-            return
-            
-        if update_user_balance(target_user_id, amount):
-            new_balance = get_user_balance(target_user_id)
-            success_msg = f"✅ تم إضافة {amount} دولار للمستخدم `{target_user_id}`\n💰 رصيده الحالي: {new_balance} دولار"
-            bot.send_message(message.chat.id, success_msg)
-            
-            # إشعار المستخدم المستهدف بنجاح عملية الإيداع
-            try:
-                bot.send_message(target_user_id, f"🎉 تم إيداع {amount} دولار لحسابك بنجاح.\n💰 رصيدك الحالي: {new_balance} دولار")
-            except:
-                pass  
+        admin_markup = types.InlineKeyboardMarkup()
+        # زر مدمج للموافقة الفورية من قبل الآدمن وإضافة الرصيد يدويًا
+        # سيقوم الأمر بتهيئة نص جاهز لتسريع عملية الشحن
+        approve_button = types.InlineKeyboardButton(text="✅ موافقة وشحن الحساب", callback_data=f"admin_approve_prompt_{user_id}")
+        admin_markup.add(approve_button)
+
+        admin_alert_text = (
+            f"🚨 **إشعار تحويل مالي جديد (شام كاش)** 🚨\n\n"
+            f"👤 العميل: {user_name}\n"
+            f"🆔 معرف العميل ID: `{user_id}`\n"
+        )
+
+        if message.content_type == 'text':
+            admin_alert_text += f"📝 **نص الإرسال (رقم العملية):** {message.text}"
+            bot.send_message(ADMIN_CHAT_ID, text=admin_alert_text, reply_markup=admin_markup, parse_mode="Markdown")
+        elif message.content_type == 'photo':
+            photo_id = message.photo[-1].file_id
+            admin_alert_text += f"📸 **العميل أرسل صورة إشعار التحويل المرفقة.**"
+            bot.send_photo(ADMIN_CHAT_ID, photo=photo_id, caption=admin_alert_text, reply_markup=admin_markup, parse_mode="Markdown")
         else:
-            bot.reply_to(message, "❌ فشل تحديث الرصيد، يرجى التحقق من اتصال قاعدة البيانات.")
-            
-    except ValueError:
-        bot.reply_to(message, "❌ خطأ: يرجى التأكد من كتابة ID والمبلغ كأرقام صحيحة.")
-    except Exception as e:
-        print(f"Error in pay command: {str(e)}")
+            bot.send_message(user_id, "❌ صيغة غير مدعومة. يرجى إرسال رقم العملية كنص أو صورة الإيصال فقط.")
+            return
 
-# دالة لتسجيل الـ Webhook تلقائياً في سيرفرات تليجرام عند تشغيل التطبيق
-def set_webhook():
-    try:
-        webhook_url = f"{RENDER_WEB_URL}/{BOT_TOKEN}"
-        url = f"https://telegram.org{BOT_TOKEN}/setWebhook?url={webhook_url}"
-        response = requests.get(url).json()
-        print(f"📡 Webhook Setup Status: {response}")
+        bot.send_message(user_id, "⏳ تم إرسال إثبات التحويل الخاص بك إلى إدارة المتجر بنجاح. سيتم مراجعة الطلب وإضافة الرصيد إلى حسابك فوراً بمجرد التأكيد.")
     except Exception as e:
-        print(f"❌ Failed to set Webhook: {str(e)}")
+        print(f"Error in process_receipt: {str(e)}")
 
-if __name__ == "__main__":
-    # تشغيل تهيئة الـ Webhook في خيط منفصل لتجنب تأخير إقلاع السيرفر
-    threading.Thread(target=set_webhook).start()
-    
-    # تشغيل سيرفر Flask على المنفذ المخصص من Render
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+# معالجة تفاعل الآدمن مع طلبات الشحن
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_prompt_"))
