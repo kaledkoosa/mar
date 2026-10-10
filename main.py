@@ -11,7 +11,7 @@ app = Flask('')
 # --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://mar-eox3.onrender.com")
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
 # 🔒 الرابط السحابي الكوري الحتمي والمباشر المدمج بأعلى معايير التشفير (SSL) للأرصدة
 DATABASE_URL = "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com"
@@ -26,7 +26,6 @@ PRICES = {
 }
 
 def get_db_connection():
-    # فرض الاتصال المباشر والآمن بسيرفر سيؤول في كوريا لتخطي تعارضات لوحة Render
     return psycopg2.connect(DATABASE_URL)
 
 def init_db():
@@ -251,3 +250,5 @@ if __name__ == "__main__":
     bot.remove_webhook()
     base_url = RENDER_WEB_URL.strip()
     while base_url.endswith('/'):
+        base_url = base_url[:-1]
+    bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
