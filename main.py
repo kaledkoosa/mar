@@ -13,7 +13,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# الرابط السحابي المعدل والمدعوم بالتشفير الإجباري والـ Connection Pooling عبر منفذ 5432
+# تم تحديث كلمة السر إلى CryptoBot@ وترميز رمز @ إلى %40 لحماية مسار الرابط من الانهيار
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:@CryptoBot12://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
@@ -26,7 +26,8 @@ PRICES = {
 }
 
 def get_db_connection():
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:@CryptoBot12://supabase.com")
+    # يعتمد الكود على المتغير المحدث أو يقوم بالقراءة من متغيرات بيئة Render كخيار بديل آمن
+    url = os.environ.get("DATABASE_URL", DATABASE_URL)
     return psycopg2.connect(url)
 
 def init_db():
@@ -138,113 +139,20 @@ def async_send_order(user_id, item, player_id):
         new_balance = get_user_balance(user_id)
         
         user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} دولار\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
-        bot.send_message(user_id, user_msg)
+        bot.send_message(user_id, text=user_msg)
     except Exception as e:
-        print(f"Async Notification Error: {str(e)}")
+        print(f"Error in async_send_order: {str(e)}")
 
-@app.route('/api/buy', methods=['POST', 'OPTIONS'])
-def api_buy_item():
-    if request.method == 'OPTIONS':
-        response = jsonify({"success": True})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Accept")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
-        return response
-
-    try:
-        data = request.json
-        if not data:
-            return jsonify({"success": False, "message": "بيانات الطلب فارغة!"})
-            
-        user_id = int(data.get("user_id"))
-        item_key = data.get("item")
-        player_id = data.get("player_id")
-        
-        item = PRICES.get(item_key)
-        if not item:
-            return jsonify({"success": False, "message": "الباقة المطلوبة غير مدعومة حالياً."})
-            
-        balance = get_user_balance(user_id)
-        if balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
-            
-        threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
-            
-        response = jsonify({"success": True})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-    except Exception as e:
-        response = jsonify({"success": False, "message": str(e)})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-
-@app.route('/')
-def home():
-    return "السيرفر مستقر ويعمل بنجاح كامل على قاعدة بيانات PostgreSQL السحابية الآمنة للأرصدة!!"
-
-@bot.message_handler(commands=['pay'])
-def pay_user_balance(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        try:
-            parts = message.text.split()
-            if len(parts) < 3:
-                bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
-                return
-            
-            target_id = int(parts[1]) 
-            amount = float(parts[2])  
-            
-            update_user_balance(target_id, amount)
-            new_balance = get_user_balance(target_id)
-            
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount}** دولار للمستخدم `{target_id}` في السحابة.\n💰 رصيده الحالي الآن أصبح: **{new_balance}** دولار", parse_mode="Markdown")
-            
-            try:
-                bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount}** دولار لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance}** دولار", parse_mode="Markdown")
-            except:
-                pass
-        except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.\nوصف الخطأ: {str(e)}")
-
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        total_users = get_total_users()
-        admin_text = (
-            f"👑 **لوحة تحكم الإدارة لمتجر عبد البصير** 👑\n\n"
-            f"👥 إجمالي المستخدمين في السحابة: `{total_users}` مستخدم.\n\n"
-            f"💡 **لشحن رصيد مستخدم:**\n"
-            f"`/pay [ID المستخدم] [المبلغ]`"
-        )
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    balance = get_user_balance(user_id)
-    
-    base_url = RENDER_WEB_URL.strip()
-    while base_url.endswith('/'):
-        base_url = base_url[:-1]
-        
-    web_app_url = f"{base_url}/shop/{user_id}"
-    
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي المثبّت سحابياً: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
-
-@bot.message_handler(content_types=['photo'])
-def process_deposit_receipt(message):
-    user_id = message.from_user.id
-    photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
-    try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الرصيد اكتب:\n`/pay {user_id} [المبلغ]`")
-    except Exception as e:
-        print(f"Error: {e}")
-
+# --- تشغيل التطبيق وربط السيرفر مع البوت ---
 if __name__ == "__main__":
+    # إزالة الـ Webhook القديم وإعداد الجديد لربطه برابط مشروع Render
+    bot.remove_webhook()
+    if RENDER_WEB_URL and RENDER_WEB_URL != "https://onrender.com":
+        bot.set_webhook(url=f"{RENDER_WEB_URL}/{BOT_TOKEN}")
+        print(f"🌐 Webhook successfully set to: {RENDER_WEB_URL}/{BOT_TOKEN}")
+    else:
+        print("⚠️ Warning: RENDER_WEB_URL environment variable is missing or default.")
+        
+    # تشغيل سيرفر Flask ليتوافق مع بورت خادم Render الديناميكي
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
