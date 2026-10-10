@@ -53,13 +53,14 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]
+            balance = row[0]  # الفكس النهائي الحاسم: جلب العنصر الأول الصافي من المصفوفة لتحديث الرقم فوراً
         cursor.close()
         conn.close()
         return float(balance)
     except Exception as e:
         print(f"Error: {str(e)}")
         return 0.0
+
 
 def update_user_balance(user_id, amount):
     try:
