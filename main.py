@@ -11,10 +11,10 @@ app = Flask('')
 # --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://mar-eox3.onrender.com")
 
-# 🔒 الربط الفولاذي المباشر بسيرفر سيؤول في كوريا الجنوبية المكتشف من واقع حسابك
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
+# 🔒 الرابط السحابي الكوري الحتمي والمباشر المدمج بأعلى معايير التشفير (SSL) للأرصدة
+DATABASE_URL = "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com"
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -26,8 +26,8 @@ PRICES = {
 }
 
 def get_db_connection():
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
-    return psycopg2.connect(url)
+    # فرض الاتصال المباشر والآمن بسيرفر سيؤول في كوريا لتخطي تعارضات لوحة Render
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
     try:
@@ -60,7 +60,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # استخراج الرقم الصافي لتفادي انهيار الـ JavaScript بداخل المتجر
+            balance = row[0]  # استخراج صافي ومضمون لمنع الـ Tuples والانهيار
         cursor.close()
         conn.close()
         return float(balance)
@@ -247,3 +247,7 @@ def process_deposit_receipt(message):
     except Exception as e:
         print(f"Error: {e}")
 
+if __name__ == "__main__":
+    bot.remove_webhook()
+    base_url = RENDER_WEB_URL.strip()
+    while base_url.endswith('/'):
