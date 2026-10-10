@@ -207,6 +207,39 @@ def set_webhook():
 if __name__ == "__main__":
     # تشغيل الـ Webhook في خيط منفصل لتجنب تعليق السيرفر
     threading.Thread(target=set_webhook).start()
-    
+    # --- معالجة أمر بدء التشغيل والترحيب (/start) مع زر المتجر الفوري ---
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    try:
+        user_id = message.chat.id
+        user_name = message.from_user.first_name if message.from_user.first_name else "عزيزي"
+        
+        # إنشاء نص الترحيب
+        welcome_text = (
+            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير**!\n\n"
+            f"🛒 يمكنك الآن شحن شدات ببجي وجواهر فري فاير فورياً وبأفضل الأسعار.\n\n"
+            f"🆔 حسابك الرقمي: `{user_id}`\n"
+            f"قم بالضغط على الزر أدناه لفتح واجهة المتجر وشراء الباقات مباشرة 👇"
+        )
+        
+        # بناء رابط المتجر المخصص للمستخدم بناءً على الـ ID الخاص به
+        # سيقوم الرابط بفتح الواجهة المبنية داخل السيرفر وتمرير بياناته تلقائياً
+        user_shop_url = f"{RENDER_WEB_URL}/shop/{user_id}"
+        
+        # إنشاء لوحة التحكم والأزرار المدمجة
+        markup = types.InlineKeyboardMarkup()
+        
+        # إضافة زر الـ WebApp لفتح المتجر بداخل تليجرام مباشرة
+        web_app_info = types.WebAppInfo(url=user_shop_url)
+        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=web_app_info)
+        
+        markup.add(shop_button)
+        
+        # إرسال الرسالة للمستخدم
+        bot.send_message(user_id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"Error in start command: {str(e)}")
+
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
