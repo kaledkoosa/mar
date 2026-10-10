@@ -8,13 +8,13 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام من Render ---
+# --- جلب المتغيرات السرية بأمان تام من إعدادات Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 تم تحديث الرابط هنا بكلمة المرور الجديدة لضمان الاتصال السحابي المشفر والمستقر للأرصدة للأبد
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
+# الاعتماد الكلي على متغير البيئة للاتصال بقاعدة البيانات السحابية
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -26,15 +26,23 @@ PRICES = {
 }
 
 def get_db_connection():
-    # فرض الرابط السحابي المحدث مباشرة لتخطي أي مشاكل قراءة صامتة
-    url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
+    if not DATABASE_URL:
+        raise ValueError("❌ خطأ: متغير البيئة DATABASE_URL غير معرف في لوحة تحكم Render!")
+        
+    # تأكيد إضافة عامل الـ SSL في حال لم يكن موجوداً بالرابط لضمان قبول الاتصال السحابي المشفر
+    url = DATABASE_URL
+    if "sslmode" not in url:
+        if "?" in url:
+            url += "&sslmode=require"
+        else:
+            url += "?sslmode=require"
+            
     return psycopg2.connect(url)
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # إنشاء الجدول وتحديد الحقول السحابية بدقة لمنع فشل تعبئة الأرصدة
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY, 
@@ -48,7 +56,7 @@ def init_db():
     except Exception as e:
         print(f"❌ DATABASE ERROR: Connection failed. Reason: {str(e)}")
 
-# إطلاق قنوات الفحص التلقائي للربط عند إقلاع السيرفر
+# إطلاق فحص الجدول عند إقلاع السيرفر
 init_db()
 
 def get_user_balance(user_id):
@@ -62,7 +70,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # استخراج صافي ومضمون لمنع الـ Tuples والانهيار
+            balance = row[0]
         cursor.close()
         conn.close()
         return float(balance)
@@ -74,7 +82,6 @@ def update_user_balance(user_id, amount):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # فحص أولاً للتأكد من وجود المستخدم في قاعدة البيانات قبل التحديث
         cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
         if cursor.fetchone() is None:
             cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
@@ -138,7 +145,6 @@ def async_send_order(user_id, item, player_id):
         bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
         
         update_user_balance(user_id, -item["price"])
-        new_balance = get_user_balance(user_id)
-        print(f"Order processed. New balance for {user_id} is {new_balance}")
+        new_balance = get_user_balance(user_id) # تم تصحيح القوس وإغلاقه هنا بنجاح
     except Exception as e:
         print(f"Error processing order: {str(e)}")
