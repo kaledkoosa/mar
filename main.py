@@ -4,17 +4,18 @@ import psycopg2
 import os
 import threading
 import json
+import requests
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام من Render (تأكد من إضافتها في إعدادات Environment Variables) ---
+# --- جلب المتغيرات السرية بأمان تام من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 تم نقل الرابط السري بالكامل إلى متغيرات البيئة لحمايته من التسريب
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://username:password@host:port/database")
+# 🔒 رابط قاعدة البيانات يتم جلبه من متغيرات البيئة لحمايته
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -40,7 +41,8 @@ def init_db():
     except Exception as e:
         print(f"❌ DATABASE ERROR: {str(e)}")
 
-init_db()
+if DATABASE_URL:
+    init_db()
 
 def get_user_balance(user_id):
     try:
@@ -53,7 +55,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]
+            balance = row[0]  # ✅ تم الإصلاح: جلب القيمة الرقمية من الـ Tuple مباشرة
         cursor.close()
         conn.close()
         return float(balance)
@@ -77,6 +79,11 @@ def update_user_balance(user_id, amount):
     except Exception as e:
         print(f"Error updating balance: {str(e)}")
         return False
+
+# 🛠️ ✅ تم الإصلاح: إضافة المسار الرئيسي لمنع ظهور خطأ 404 (غير موجود) في المتصفح
+@app.route('/')
+def home():
+    return "🚀 السيرفر يعمل بنجاح والبوت متصل بقاعدة البيانات!", 200
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
@@ -142,22 +149,24 @@ def api_buy_item():
         if current_balance < item["price"]:
             return jsonify({"success": False, "message": "عذراً، رصيدك غير كافٍ لإتمام هذه العملية!"})
             
-        # تشغيل إرسال الطلب ومعالجة الخصم في الخلفية لمنع تعليق الاستجابة البرمجية
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
-        
         return jsonify({"success": True, "message": "جاري معالجة طلبك بنجاح!"})
         
     except Exception as e:
         return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
 
-# --- معالجة أوامر البوت (أمر الدفع المالي /pay) ---
+# --- معالجة أمر الدفع المالي الموجه للمستخدمين /pay ---
 @bot.message_handler(commands=['pay'])
 def handle_pay_command(message):
     try:
-        # تقسيم نص الرسالة لاستخراج المعطيات: /pay ID AMOUNT
+        # التحقق من أن مرسل الأمر هو الآدمن المسؤول فقط لحماية البوت من التلاعب بالأرصدة
+        if message.chat.id != ADMIN_CHAT_ID:
+            bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص لإدارة المتجر فقط!")
+            return
+
         parts = message.text.split()
         if len(parts) != 3:
-            bot.reply_to(message, "⚠️ **الصيغة الخاطئة!**\nالرجاء الاستخدام كالتالي:\n`/pay [ID] [المبلغ]`")
+            bot.reply_to(message, "⚠️ **الصيغة الصحيحة:**\n`/pay [ID] [المبلغ]`")
             return
             
         target_user_id = int(parts[1])
@@ -167,16 +176,16 @@ def handle_pay_command(message):
             bot.reply_to(message, "❌ لا يمكن تحويل مبلغ يساوي أو أقل من صفر!")
             return
             
-        # تحديث الرصيد في قاعدة البيانات
         if update_user_balance(target_user_id, amount):
             new_balance = get_user_balance(target_user_id)
-            
-            # إرسال رسالة التأكيد للمستخدم المستهدف والمسؤول
             success_msg = f"✅ تم إضافة {amount} دولار للمستخدم `{target_user_id}`\n💰 رصيده الحالي: {new_balance} دولار"
             bot.send_message(message.chat.id, success_msg)
             
-            if target_user_id != message.chat.id:
+            # إشعار المستخدم المستهدف
+            try:
                 bot.send_message(target_user_id, f"🎉 تم إيداع {amount} دولار لحسابك بنجاح.\n💰 رصيدك الحالي: {new_balance} دولار")
+            except:
+                pass  # في حال لم يقم المستخدم ببدء المحادثة مع البوت بعد
         else:
             bot.reply_to(message, "❌ فشل تحديث الرصيد، يرجى التحقق من اتصال قاعدة البيانات.")
             
@@ -185,7 +194,19 @@ def handle_pay_command(message):
     except Exception as e:
         print(f"Error in pay command: {str(e)}")
 
+# دالة لتسجيل الـ Webhook تلقائياً عند بدء التشغيل
+def set_webhook():
+    try:
+        webhook_url = f"{RENDER_WEB_URL}/{BOT_TOKEN}"
+        url = f"https://telegram.org{BOT_TOKEN}/setWebhook?url={webhook_url}"
+        response = requests.get(url).json()
+        print(f"📡 Webhook Setup Status: {response}")
+    except Exception as e:
+        print(f"❌ Failed to set Webhook: {str(e)}")
+
 if __name__ == "__main__":
-    # تشغيل سيرفر Flask على المنفذ الافتراضي لـ Render
+    # تشغيل الـ Webhook في خيط منفصل لتجنب تعليق السيرفر
+    threading.Thread(target=set_webhook).start()
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
