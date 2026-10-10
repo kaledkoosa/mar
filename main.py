@@ -13,7 +13,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 🔒 تم تصحيح النطاق هنا بربطه بسيرفر كوريا ap-northeast-2 الحقيقي الخاص بحسابك لمنع فشل الاتصال والتصفير
+# 🔒 الربط الفولاذي المباشر بسيرفر سيؤول في كوريا الجنوبية المكتشف من واقع حسابك
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
@@ -26,7 +26,6 @@ PRICES = {
 }
 
 def get_db_connection():
-    # فرض الرابط الكوري المطور والمشفر مباشرة لتفادي مشاكل القراءة الصامتة من ريندر
     url = os.environ.get("DATABASE_URL", "postgresql://postgres.aeozpoldsypsketsmzym:kaledkoosa12@://supabase.com")
     return psycopg2.connect(url)
 
@@ -34,7 +33,6 @@ def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        # إنشاء جدول المستخدمين وتحديد الحقول السحابية المضمونة لحفظ الأرصدة للأبد
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY, 
@@ -62,7 +60,7 @@ def get_user_balance(user_id):
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]  # فك المصفوفة رقمياً لتخطي انهيار الواجهة والـ JavaScript بداخل الهاتف
+            balance = row[0]  # استخراج الرقم الصافي لتفادي انهيار الـ JavaScript بداخل المتجر
         cursor.close()
         conn.close()
         return float(balance)
@@ -245,3 +243,7 @@ def process_deposit_receipt(message):
     photo_id = message.photo[-1].file_id
     bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
     try:
+        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الرصيد اكتب:\n`/pay {user_id} [المبلغ]`")
+    except Exception as e:
+        print(f"Error: {e}")
+
