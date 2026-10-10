@@ -11,7 +11,7 @@ app = Flask('')
 # --- جلب المتغيرات السرية بأمان تام من إعدادات Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
+RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://mar-eox3.onrender.com")
 
 # الاعتماد الكلي على متغير البيئة للاتصال بقاعدة البيانات السحابية
 DATABASE_URL = os.environ.get("DATABASE_URL")
