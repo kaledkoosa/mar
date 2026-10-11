@@ -3,6 +3,8 @@ from telebot import types
 import json
 import os
 import threading
+import sys
+import traceback
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
@@ -61,6 +63,17 @@ def update_user_balance(user_id, amount):
         data[uid_str] = 0.0
     data[uid_str] = round(data[uid_str] + amount, 2)
     save_data(data)
+
+# --- مسارات Flask المطلوبة لـ Render وللمتجر الإلكتروني ---
+@app.route('/')
+def home():
+    return "البوت يعمل بنجاح والخادم مستقر مئة بالمئة!"
+
+@app.route('/shop/<int:user_id>')
+def shop_front(user_id):
+    balance = get_user_balance(user_id)
+    # هنا يمكنك وضع كود صفحة المتجر الـ HTML مستقبلاً
+    return render_template_string(f"<h1>مرحباً بك في المتجر، رصيدك هو: {balance} \$</h1>")
 
 # --- أوامر تيلجرام للعملاء ---
 @bot.message_handler(commands=['start'])
@@ -131,9 +144,34 @@ def manual_admin_deposit(message):
         new_balance = get_user_balance(target_user_id)
         
         bot.send_message(ADMIN_CHAT_ID, f"✅ **عملية ناجحة**\n\n👤 العميل: `{target_user_id}`\n➕ تم إضافة: `{amount} $`\n💰 الرصيد الحالي: `{new_balance} $`", parse_mode="Markdown")
-        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \(\n💰 رصيدك الإجمالي الحالي: {new_balance} \)", parse_mode="Markdown")
         
+        notification_text = (
+            f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n"
+            f"➕ الرصيد المضاف: {amount} \$\n"
+            f"💰 رصيدك الإجمالي الحالي: {new_balance} \$"
+        )
+        bot.send_message(target_user_id, notification_text, parse_mode="Markdown")
     except ValueError:
-        bot.send_message(ADMIN_CHAT_ID, "⚠️ **خطأ في الصيغة المستخدمة!**\n\nيرجى استخدام الصيغة الصحيحة تماماً:\n`/pay USER_ID AMOUNT`", parse_mode="Markdown")
+        bot.send_message(ADMIN_CHAT_ID, "❌ الصيغة خاطئة. استخدم: `/pay USER_ID AMOUNT`", parse_mode="Markdown")
     except Exception as e:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ حدث خطأ غير متوقع أثناء المعالجة:\n`{str(e)}`", parse_mode="Markdown")
+        bot.send_message(ADMIN_CHAT_ID, f"❌ حدث خطأ أثناء التعديل: {e}")
+
+# --- آلية التشغيل المزدوجة الآمنة لمنع التوقف في Render ---
+def run_bot():
+    print("جاري تشغيل بوت التيلجرام...")
+    try:
+        bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    except Exception as e:
+        print("خطأ فادح في نظام استقبال رسائل البوت:", file=sys.stderr)
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    # 1. تشغيل البوت في مسار خلفي منفصل
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
+    t.start()
+    
+    # 2. تشغيل سيرفر ويب Flask في المسار الأساسي لربطه مع منصة Render
+    port = int(os.environ.get("PORT", 10000))
+    print(f"جاري تشغيل خادم الويب على المنفذ {port}...")
+    app.run(host='0.0.0.0', port=port)
