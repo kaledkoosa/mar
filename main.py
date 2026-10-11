@@ -26,7 +26,6 @@ PRICES = {
     "ff_310": {"name": "310 جوهرة Free Fire", "price": 3.0}
 }
 
-# ملف حفظ الأرصدة المحلي التلقائي
 DATA_FILE = "users_data.json"
 
 def load_data():
@@ -41,8 +40,6 @@ def load_data():
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
-    
-    # ميزة الحفظ الاحتياطي التلقائي: إرسال نسخة للآدمن فوراً عند أي تعديل
     try:
         with open(DATA_FILE, "rb") as f:
             bot.send_document(ADMIN_CHAT_ID, f, caption="💾 نسخة احتياطية تلقائية ومحدثة لأرصدة المتجر.")
@@ -65,7 +62,8 @@ def update_user_balance(user_id, amount):
     data[uid_str] = round(data[uid_str] + amount, 2)
     save_data(data)
 
-# --- واجهات التحكم والرسائل عبر تيلجرام ---
+# --- أوامر تيلجرام ---
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -100,26 +98,52 @@ def show_deposit_details(call):
     )
     bot.send_message(call.from_user.id, deposit_text, parse_mode="Markdown")
 
-# أمر الإيداع للمسؤول
-@bot.message_handler(commands=['deposit'])
+# ⭐ تفعيل أمر /admin لعرض لوحة تحكم المسؤول والإحصائيات
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    if message.chat.id != ADMIN_CHAT_ID:
+        return
+    
+    data = load_data()
+    total_users = len(data)
+    total_balances = sum(data.values())
+    
+    admin_text = (
+        f"⚙️ **لوحة تحكم مدير متجر عبد البصير** ⚙️\n\n"
+        f"👥 إجمالي المستخدمين المسجلين: `{total_users}`\n"
+        f"💰 إجمالي الأرصدة المودعة حالياً: `{total_balances} \$`\n\n"
+        f"📥 **طريقة شحن رصيد لزبون:**\n"
+        f"استخدم أمر `/pay` أو `/deposit` متبوعاً بالـ ID ثم المبلغ.\n"
+        f"✍️ صيغة الأمر الصحيحة:\n"
+        f"`/pay 5522345582 10`\n"
+        f"أو\n"
+        f"`/deposit 5522345582 10`"
+    )
+    bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="Markdown")
+
+# ⭐ تعديل وتصحيح أمر إضافة الرصيد ليدعم كلا اللفظين /pay و /deposit وبدون أخطاء
+@bot.message_handler(commands=['pay', 'deposit'])
 def manual_admin_deposit(message):
     if message.chat.id != ADMIN_CHAT_ID:
         return
         
     try:
-        args = message.text.split()
-        target_user_id = int(args[1])
-        amount = float(args[2])
+        # تقسيم الرسالة النصية بشكل آمن مدمج
+        parts = message.text.split()
+        if len(parts) < 3:
+            raise ValueError("صيغة ناقصة")
+            
+        target_user_id = int(parts[1])
+        amount = float(parts[2])
         
         update_user_balance(target_user_id, amount)
         new_balance = get_user_balance(target_user_id)
         
-        bot.send_message(ADMIN_CHAT_ID, f"✅ تم شحن `{amount} \$` للعميل `{target_user_id}`.\n💰 رصيده الكلي الآن: {new_balance} \$")
+        bot.send_message(ADMIN_CHAT_ID, f"✅ **عملية ناجحة**\n\n👤 العميل: `{target_user_id}`\n➕ تم إضافة: `{amount} \$`\n💰 الرصيد الحالي: `{new_balance} \$`", parse_mode="Markdown")
         bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
     except Exception as e:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ صيغة خاطئة، استخدم:\n`/deposit USER_ID AMOUNT`")
+        bot.send_message(ADMIN_CHAT_ID, f"❌ **خطأ في صيغة الأمر!**\n\nيرجى الكتابة تماماً كالتالي:\n`/pay USER_ID AMOUNT`\n\nمثال شحن 10 دولار:\n`/pay 5522345582 10`", parse_mode="Markdown")
 
-# ميزة استعادة البيانات بمجرد إعادة إرسال ملف النسخة الاحتياطية للبوت من الآدمن
 @bot.message_handler(content_types=['document'])
 def handle_backup_restore(message):
     if message.chat.id != ADMIN_CHAT_ID:
@@ -201,7 +225,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "Backup Database Mode Online!", 200
+    return "All commands are working flawlessly!", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
