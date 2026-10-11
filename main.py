@@ -19,7 +19,7 @@ SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")
 SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "عبد البصير") 
 USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) 
 
-# تفعيل البوت بدون خيوط معالجة عشوائية مسببة للمشاكل
+# تفعيل البوت بدون خيوط معالجة عشوائية مسببة للمشاكل داخلياً
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 PRICES = {
@@ -133,53 +133,68 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
 
 def process_deposit_proof(message):
-    """معالجة رقم الحوالة المرسل من المستخدم وإشعار المسؤول"""
+    """معالجة رقم الحوالة المرسل من المستخدم"""
     user_id = message.from_user.id
     reference_code = message.text.strip()
     
-    # حفظ الإيداع بقاعدة البيانات بحالة انتظار التفعيل PENDING
+    if not reference_code:
+        bot.reply_to(message, "❌ يرجى إرسال رقم عملية تحويل صحيح ومكتوب.")
+        return
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO deposits (user_id, reference_code, status) VALUES (?, ?, 'PENDING')", (user_id, reference_code))
+        cursor.execute("INSERT INTO deposits (user_id, amount_syp, reference_code, status) VALUES (?, ?, ?, ?)",
+                       (user_id, 0.0, reference_code, 'PENDING'))
         conn.commit()
         conn.close()
         
-        bot.reply_to(message, "✅ تم استلام رقم العملية بنجاح! سيقوم المسؤول بمراجعة التحويل وإضافة الرصيد إلى حسابك فوراً.")
+        # إشعار المستخدم تلقائياً
+        bot.reply_to(message, "✅ تم استلام رقم الحوالة بنجاح! جاري مراجعة طلبك من قبل الإدارة وسيتم إشعارك فور تفعيل الرصيد.")
         
-        # إشعار الأدمن بالعملية الجديدة إذا تم تعيين المعرف
+        # إشعار المسؤول الإداري بالطلب الجديد
         if ADMIN_CHAT_ID != 0:
-            admin_text = f"🚨 **طلب إيداع جديد قيد الانتظار:**\n\n👤 المستخدم: `{user_id}`\n🔢 رقم العملية: `{reference_code}`"
-            bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="Markdown")
+            admin_msg = f"🔔 **طلب إيداع جديد قيد الانتظار:**\n\n👤 المستخدم: `{user_id}`\n🔢 رقم العملية: `{reference_code}`"
+            bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="Markdown")
             
     except Exception as e:
-        print(f"Error processing deposit: {str(e)}")
-        bot.reply_to(message, "❌ حدث خطأ أثناء حفظ بيانات العملية، يرجى المحاولة لاحقاً.")
+        bot.reply_to(message, "❌ حدث خطأ أثناء تسجيل العملية بقاعدة البيانات، يرجى المحاولة لاحقاً.")
+        print(f"Error in process_deposit_proof: {str(e)}")
 
-# ==================== مسارات الويب وخادم التشغيل ====================
+# ==================== أقسام خادم الويب (Flask) ====================
 
 @app.route('/')
-def render_home(): 
-    # تم تغيير الاسم هنا لمنع التعارض مع أي دالة 'home' أخرى في مشروعك
-    return "🚀 خادم الويب والبوت يعملان معاً بنجاح دون أي تضارب!"
+def home():
+    return "<h1>🌐 Web Server started in background...</h1>"
 
 @app.route('/shop/<int:user_id>')
 def shop(user_id):
-    return f"🛒 واجهة المتجر الإلكتروني للمستخدم: {user_id} جاهزة للربط والعمل."
+    # صفحة المتجر الإلكتروني المبسطة (تعدل حسب الواجهة المطلوبة)
+    balance = get_user_balance(user_id)
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head><title>المتجر الإلكتروني</title></head>
+    <body style="font-family:sans-serif; text-align:center; padding:20px;">
+        <h2>🛒 متجر عبد البصير الإلكتروني</h2>
+        <p>مرحباً بك، رصيدك الحالي: <strong>{{ balance }} دولار</strong></p>
+    </body>
+    </html>
+    """, balance=balance)
 
-def run_flask():
-    """تشغيل خادم الويب على المنفذ المطلوب من منصة Render بشكل ديناميكي"""
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+# ==================== تشغيل السيرفر والبوت معاً بذكاء ====================
+
+def run_bot():
+    print("🤖 Telegram Bot is starting polling...")
+    # تم حذف 'non_stop=True' لحل مشكلة السجلات نهائياً وبشكل سليم
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    # 1. تشغيل خادم ويب Flask في الخلفية باستخدام الـ Threads
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
+    # 1. تشغيل بوت تليجرام في خيط معالجة منفصل (Background Thread) لمنع تعليق خادم الويب
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
     
-    print("🌐 Web Server started in background...")
-    print("🤖 Telegram Bot is starting polling...")
-    
-    # 2. تشغيل البوت بشكل لا نهائي ومستمر لاستقبال الرسائل
-    bot.infinity_polling(non_stop=True)
+    # 2. تشغيل خادم ويب Flask على المنفذ المطلوب لمنصة Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
