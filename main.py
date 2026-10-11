@@ -14,12 +14,13 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 💳 بيانات محفظة شام كاش الخاصة بك (تُجلب من إعدادات Render أو القيم الافتراضية أدناه)
+# 💳 بيانات محفظة شام كاش الخاصة بك
 SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  
 SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "عبد البصير") 
-USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) # سعر صرف الدولار مقابل الليرة السورية بالمتجر
+USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) 
 
-bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
+# تفعيل البوت بدون خيوط معالجة عشوائية مسببة للمشاكل
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 PRICES = {
     "pubg_60": {"name": "60 شدة PUBG", "price": 1.0},
@@ -40,7 +41,6 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)')
-        # إنشاء جدول لإدارة عمليات الإيداع المعلقة وضمان عدم تكرارها
         cursor.execute('''CREATE TABLE IF NOT EXISTS deposits (
                             deposit_id INTEGER PRIMARY KEY AUTOINCREMENT, 
                             user_id INTEGER, 
@@ -116,27 +116,23 @@ def send_welcome(message):
     
     bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# معالجة طلبات الأزرار الشفافة (Callback)
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     user_id = call.from_user.id
     
     if call.data == "request_deposit":
-        # إرسال بيانات الشحن للمستخدم وطريقة التحويل
         deposit_instruction = (
-            f"💳 **تعليمات الإيداع عبر محفظة شام كاش:**\n\n"
+            f"💳 **%D8%AA%D8%B9%D9%84%D9%8A%D9%85%D8%A7%D8%AA الإيداع عبر محفظة شام كاش:**\n\n"
             f"يرجى تحويل المبلغ المراد شحنه بالليرة السورية إلى الحساب التالي:\n"
             f"📞 **رقم المحفظة:** `{SHAM_CASH_NUMBER}`\n"
             f"👤 **اسم صاحب الحساب:** {SHAM_CASH_NAME}\n\n"
-            f"⚠️ بعد إتمام التحويل الناجح، أرسل **رقم عملية التحويل** أو **رقم الإشعار** هنا في المحادثة مباشرة ليتم مراجعته وإضافة الرصيد لحسابك بالدولار."
+            f"⚠️ بعد إتمام التحويل الناجح، أرسل **رقم عملية التحويل** هنا في المحادثة مباشرة."
         )
         bot.send_message(user_id, deposit_instruction, parse_mode="Markdown")
-        # نقل حالة المستخدم لانتظار الإثبات
-        bot.register_next_step_handler(call.message, process_deposit_proof)
+        bot.register_next_step_handler_by_chat_id(call.message.chat.id, process_deposit_proof)
         bot.answer_callback_query(call.id)
         
     elif call.data.startswith("approve_"):
-        # معالجة موافقة الأدمن على الإيداع
         _, dep_id, c_user_id, amount_usd = call.data.split("_")
         dep_id, c_user_id, amount_usd = int(dep_id), int(c_user_id), float(amount_usd)
         
@@ -150,18 +146,16 @@ def handle_callbacks(call):
             conn.commit()
             conn.close()
             
-            # تحديث الرصيد للمستخدم وإخطاره
             update_user_balance(c_user_id, amount_usd)
             new_balance = get_user_balance(c_user_id)
             
-            bot.send_message(c_user_id, f"✅ **تهانينا!** تم تأكيد إيداعك بنجاح.\n💰 أضيف لحسابك: `+{amount_usd:.2f}$`\n💳 رصيدك الإجمالي الآن: `{new_balance:.2f}$`")
-            bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🟢 تم قبول طلب الإيداع رقم #{dep_id} وإضافة الرصيد بنجاح.")
+            bot.send_message(c_user_id, f"✅ **تم تأكيد إيداعك بنجاح!**\n💰 أضيف لحسابك: `+{amount_usd:.2f}$`\n💳 رصيدك الإجمالي: `{new_balance:.2f}$`")
+            bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🟢 تم قبول طلب الإيداع رقم #{dep_id} بنجاح.")
         else:
             conn.close()
             bot.answer_callback_query(call.id, "هذا الطلب تم معالجته مسبقاً!")
             
     elif call.data.startswith("reject_"):
-        # معالجة رفض الأدمن للطلب
         _, dep_id, c_user_id = call.data.split("_")
         dep_id, c_user_id = int(dep_id), int(c_user_id)
         
@@ -171,18 +165,17 @@ def handle_callbacks(call):
         conn.commit()
         conn.close()
         
-        bot.send_message(c_user_id, "❌ نأسف، تم رفض طلب الإيداع الخاص بك. يرجى التواصل مع الدعم للتأكد من بيانات التحويل ورقم العملية.")
-        bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🔴 تم رفض طلب الإيداع رقم #{dep_id} بنجاح.")
+        bot.send_message(c_user_id, "❌ تم رفض طلب الإيداع. يرجى التواصل مع الدعم للتحقق.")
+        bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🔴 تم رفض طلب الإيداع رقم #{dep_id} .")
 
 def process_deposit_proof(message):
     user_id = message.from_user.id
     proof_text = message.text
     
     if not proof_text or proof_text.startswith('/'):
-        bot.send_message(user_id, "❌ خطأ: يرجى إرسال رقم إشعار عملية تحويل صحيح بدون الرموز العامة للتحكم.")
+        bot.send_message(user_id, "❌ خطأ: يرجى إرسال إشعار تحويل صحيح.")
         return
 
-    # حفظ الطلب معلقاً بقاعدة البيانات
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO deposits (user_id, reference_code, amount_syp) VALUES (?, ?, ?)", (user_id, proof_text, 0.0))
@@ -190,25 +183,20 @@ def process_deposit_proof(message):
     conn.commit()
     conn.close()
     
-    bot.send_message(user_id, "⏳ تم إرسال إشعار وإثبات التحويل الخاص بك إلى الإدارة بنجاح. سيتم مراجعة الطلب وإضافة الرصيد فوراً.")
+    bot.send_message(user_id, "⏳ جاري مراجعة طلب الإيداع الخاص بك من قِبل الإدارة...")
     
-    # إرسال إشعار فوري للأدمن لاتخاذ الإجراء (قبول أو رفض من أزرار التحكم)
     admin_markup = types.InlineKeyboardMarkup()
-    # لنفرض أن الشحن الافتراضي المتاح للتجربة أو المراجعة سيتم تقديره، أو يكتبه الأدمن، الكود هنا يحتسب الرصيد افتراضياً بانتظار تحديد القيمة أو إضافتها بذكاء
-    # هنا سنقوم بطلب تحديد قيمة تقريبية أو اعتماد إيداع ثابت بقيمة 1$ كبداية أو يتيح للأدمن التحقق منها. لسهولة الأتمتة سنفرض الإيداع محدد القيمة عبر المراجعة:
-    # لغايات برمجية سريعة سنضع قيمة تجريبية 5 دولارات أو يمكن تعديلها لاحقاً حسب نظام الأسعار
     estimated_usd = 5.0 
     
-    btn_approve = types.InlineKeyboardButton(text="🟢 قبول وشحن (5$)", callback_data=f"approve_{dep_id}_{user_id}_{estimated_usd}")
-    btn_reject = types.InlineKeyboardButton(text="🔴 رفض الطلب", callback_data=f"reject_{dep_id}_{user_id}")
+    btn_approve = types.InlineKeyboardButton(text="🟢 قبول (5$)", callback_data=f"approve_{dep_id}_{user_id}_{estimated_usd}")
+    btn_reject = types.InlineKeyboardButton(text="🔴 رفض", callback_data=f"reject_{dep_id}_{user_id}")
     admin_markup.add(btn_approve, btn_reject)
     
     admin_notification = (
-        f"🚨 **طلب إيداع معلق جديد** 🚨\n\n"
-        f"👤 معرف العميل: `{user_id}`\n"
-        f"🔢 إثبات التحويل المستلم: `{proof_text}`\n"
-        f"🆔 رقم الطلب الداخلي: #{dep_id}\n\n"
-        f"تأكد من تطبيق شام كاش الخاص بك أولاً، ثم اضغط على الإجراء المناسب:"
+        f"🚨 **طلب إيداع معلق** 🚨\n\n"
+        f"👤 العميل: `{user_id}`\n"
+        f"🔢 الإثبات: `{proof_text}`\n\n"
+        f"اختر إجراء الإشعار المباشر:"
     )
     bot.send_message(ADMIN_CHAT_ID, admin_notification, reply_markup=admin_markup)
 
@@ -216,14 +204,18 @@ def process_deposit_proof(message):
 
 @app.route('/')
 def home():
-    return "🚀 متجر عبد البصير يعمل بنجاح تام وبأعلى استقرار عبر خادم SQLite المحلي!", 200
+    return "🚀 متجر عبد البصير يعمل بثبات تام وبدون توقف إجباري!", 200
 
+# تصحيح مسار استقبال الـ Webhook بشكل آمن ومحمي لمنع التوقف المبكر
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
-    return "OK", 200
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    else:
+        return jsonify({"error": "Invalid Content-Type"}), 403
 
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
@@ -236,3 +228,27 @@ def shop_interface(user_id):
             html_content = f.read()
     except:
         return "Error: index.html not found."
+    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
+    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
+    return render_template_string(html_content)
+
+def async_send_order(user_id, item, player_id):
+    try:
+        admin_msg = (
+            f"📥 **طلب مبيعات جديد** 📥\n\n"
+            f"👤 المشتري ID: `{user_id}`\n"
+            f"📦 الباقة: **{item['name']}**\n"
+            f"🆔 اللاعب: `{player_id}`"
+        )
+        bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
+        update_user_balance(user_id, -item["price"])
+        new_balance = get_user_balance(user_id)
+        user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n💰 رصيدك الحالي: {new_balance:.2f}$"
+        bot.send_message(user_id, user_msg)
+    except Exception as e:
+        print(f"Error in async_send_order: {str(e)}")
+
+@app.route('/api/buy', methods=['POST', 'OPTIONS'])
+def api_buy_item():
+    if request.method == 'OPTIONS':
+        response = jsonify({"success": True})
