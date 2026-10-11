@@ -137,105 +137,41 @@ def api_buy_item():
     try:
         data = request.json
         if not data:
-            return jsonify({"success": False, "message": "بيانات فارغة!"})
+            return jsonify({"success": False, "message": "بيانات فارغة!"}), 400
             
-        user_id = int(data.get("user_id"))
-        item_key = data.get("item")
+        # جلب البيانات المرسلة من واجهة المتجر الإلكتروني
+        user_id = data.get("user_id")
+        item_id = data.get("item_id")
         player_id = data.get("player_id")
         
-        item = PRICES.get(item_key)
+        if not user_id or not item_id or not player_id:
+            return jsonify({"success": False, "message": "جميع الحقول مطلوبة!"}), 400
+            
+        # التحقق من وجود المنتج المختار في قائمة الأسعار
+        item = PRICES.get(item_id)
         if not item:
-            return jsonify({"success": False, "message": "العنصر غير موجود!"})
+            return jsonify({"success": False, "message": "المنتج غير موجود!"}), 404
             
-        current_balance = get_user_balance(user_id)
-        if current_balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً، رصيدك غير كافٍ لإتمام هذه العملية! يرجى شحن حسابك أولاً."})
+        # التحقق من رصيد المستخدم الحالي في قاعدة البيانات
+        balance = get_user_balance(user_id)
+        if balance < item["price"]:
+            return jsonify({"success": False, "message": "رصيدك غير كافٍ لإتمام هذه العملية!"}), 400
             
+        # معالجة الطلب في الخلفية لتحديث الرصيد وإرسال إشعار للمشرف واللاعب
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
-        return jsonify({"success": True, "message": "جاري معالجة طلبك بنجاح!"})
         
+        response = jsonify({"success": True, "message": "تم تقديم طلبك بنجاح وجاري معالجته!"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 200
+
     except Exception as e:
-        return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
+        print(f"Error in api_buy_item: {str(e)}")
+        response = jsonify({"success": False, "message": "حدث خطأ داخلي في الخادم!"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    try:
-        user_id = message.chat.id
-        user_name = message.from_user.first_name if message.from_user.first_name else "عزيزي"
-        
-        welcome_text = (
-            f"👋 أهلاً بك يا {user_name} في **متجر عبد البصير لشحن الألعاب لسوريا**!\n\n"
-            f"🛒 شحن فوري وآمن لشدات ببجي وجواهر فري فاير بالليرة السورية عبر شام كاش.\n\n"
-            f"🆔 حسابك الرقمي: `{user_id}`\n\n"
-            f"اضغط على الزر أدناه لشراء المنتجات، أو اختر شحن الرصيد من الأزرار المتاحة 👇"
-        )
-        
-        user_shop_url = f"{RENDER_WEB_URL}/shop/{user_id}"
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        
-        shop_button = types.InlineKeyboardButton(text="🛍️ فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=user_shop_url))
-        deposit_button = types.InlineKeyboardButton(text="💳 شحن رصيد حسابي (شام كاش)", callback_data="sham_cash_deposit")
-        
-        markup.add(shop_button, deposit_button)
-        bot.send_message(user_id, text=welcome_text, reply_markup=markup, parse_mode="Markdown")
-        
-    except Exception as e:
-        print(f"Error in start command: {str(e)}")
-
-@bot.callback_query_handler(func=lambda call: call.data == "sham_cash_deposit")
-def process_deposit_click(call):
-    try:
-        user_id = call.message.chat.id
-        deposit_instruction = (
-            f"🇸🇾 **تعليمات الشحن اليدوي عبر محفظة شام كاش:**\n\n"
-            f"1️⃣ قم بالتحويل إلى رقم المحفظة التالي:\n"
-            f"📞 الرقم: `{SHAM_CASH_NUMBER}`\n"
-            f"👤 الاسم: **{SHAM_CASH_NAME}**\n\n"
-            f"2️⃣ قيمة الصرف المعتمدة في المتجر:\n"
-            f"💵 **1 دولار متجر = {int(USD_TO_SYP):,} ليرة سورية**\n\n"
-            f"3️⃣ بعد إتمام التحويل الناجح من تطبيقك، يرجى **إرسال رقم العملية (المرجع) في رسالة نصية مباشرة للبوت هنا**، أو إرسال صورة واضحة لإيصال التحويل لإتمام تأكيد طلبك."
-        )
-        msg = bot.send_message(user_id, text=deposit_instruction, parse_mode="Markdown")
-        bot.register_next_step_handler(msg, process_receipt_submission)
-    except Exception as e:
-        print(f"Error in deposit callback: {str(e)}")
-
-def process_receipt_submission(message):
-    try:
-        user_id = message.chat.id
-        user_name = message.from_user.first_name
-        
-        admin_markup = types.InlineKeyboardMarkup()
-        approve_button = types.InlineKeyboardButton(text="✅ موافقة وشحن الحساب", callback_data=f"admin_approve_prompt_{user_id}")
-        admin_markup.add(approve_button)
-
-        admin_alert_text = (
-            f"🚨 **إشعار تحويل مالي جديد (شام كاش)** 🚨\n\n"
-            f"👤 العميل: {user_name}\n"
-            f"🆔 معرف العميل ID: `{user_id}`\n"
-        )
-
-        if message.content_type == 'text':
-            admin_alert_text += f"📝 **نص الإرسال (رقم العملية):** {message.text}"
-            bot.send_message(ADMIN_CHAT_ID, text=admin_alert_text, reply_markup=admin_markup, parse_mode="Markdown")
-        elif message.content_type == 'photo':
-            photo_id = message.photo[-1].file_id
-            admin_alert_text += f"📸 **العميل أرسل صورة إشعار التحويل المرفقة.**"
-            bot.send_photo(ADMIN_CHAT_ID, photo=photo_id, caption=admin_alert_text, reply_markup=admin_markup, parse_mode="Markdown")
-        else:
-            bot.send_message(user_id, "❌ صيغة غير مدعومة. يرجى إرسال رقم العملية كنص أو صورة الإيصال فقط.")
-            return
-
-        bot.send_message(user_id, "⏳ تم إرسال إثبات التحويل الخاص بك إلى إدارة المتجر بنجاح. سيتم مراجعة الطلب وإضافة الرصيد إلى حسابك فوراً بمجرد التأكيد.")
-    except Exception as e:
-        print(f"Error in process_receipt: {str(e)}")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_prompt_"))
-def admin_prompt_amount(call):
-    if call.message.chat.id != ADMIN_CHAT_ID:
-        return
-    try:
-        target_user_id = call.data.split("_")[-1]
-        msg = bot.send_message(ADMIN_CHAT_ID, f"يرجى كتابة القيمة المراد إضافتها لحساب المستخدم `{target_user_id}` **بالدولار** مباشرة (مثال: 5 أو 1.5):")
-        bot.register_next_step_handler(msg, lambda m: execute_admin_deposit(m, target_user_id))
-    except Exception as e:
+# --- بدء تشغيل البوت وإعداد خادم الويب متوافقاً مع منصة Render ---
+if __name__ == "__main__":
+    # جلب منفذ التشغيل الديناميكي المخصص من Render تلقائياً
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
