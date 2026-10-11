@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from supabase import create_client, Client
-from supabase.client import ClientOptions
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,12 +21,8 @@ SHAM_CASH_NUM = os.getenv("SHAM_CASH_NUM", "[09xxxxxxxx]")
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 app = FastAPI()
 
-# تهيئة Supabase مع حل مشكلة الـ proxy وتحديد المهلة لتفادي الأخطاء
-supabase: Client = create_client(
-    SUPABASE_URL, 
-    SUPABASE_KEY, 
-    options=ClientOptions(postgrest_client_timeout=10)
-)
+# تهيئة Supabase بالطريقة القياسية الصافية لمنع خطأ الـ proxy نهائياً
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ذاكرة مؤقتة لحفظ حالات المستخدمين بانتظار رفع الإشعار اليدوي
 user_sessions = {}
@@ -53,7 +48,7 @@ async def process_webhook(request: Request):
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
-    user_sessions[user_id] = {} # تصفير الجلسة
+    user_sessions[user_id] = {}
 
     try:
         # حفظ أو تحديث بيانات العميل في Supabase
@@ -80,7 +75,6 @@ def handle_webapp_data(message):
         user_id = str(message.from_user.id)
         data = json.loads(message.web_app_data.data)
 
-        # حفظ تفاصيل الطلب مؤقتاً لحين رفع إشعار التحويل اليدوي
         user_sessions[user_id] = {
             "game": data["gameName"],
             "package": data["packageName"],
@@ -142,10 +136,9 @@ def process_and_send_to_admin(message, user_id, session):
             "status": "بانتظار المراجعة"
         }).execute()
 
-        order_data = response.data[0]
+        order_data = response.data[0] if isinstance(response.data, list) else response.data
         bot.reply_to(message, "✅ شكراً لك! تم رفع إثبات الدفع وإرسال طلبك للإدارة بنجاح. سيتم مراجعة حسابنا وشحن حسابك وتنبيهك فوراً.")
 
-        # صياغة رسالة التحكم الخاصة بالأدمن
         admin_msg = (
             f"🔔 *طلب شحن جديد رقم (#{order_data['id']})*\n\n"
             f"👤 العميل: [{message.from_user.first_name}](tg://user?id={user_id})\n"
@@ -163,7 +156,7 @@ def process_and_send_to_admin(message, user_id, session):
             InlineKeyboardButton("❌ رفض وإلغاء", callback_data=f"admin_no_{order_data['id']}_{user_id}")
         )
 
-        if order_data["proof_photo"]:
+        if order_data.get("proof_photo"):
             bot.send_photo(ADMIN_ID, order_data["proof_photo"], caption=admin_msg, reply_markup=markup)
         else:
             bot.send_message(ADMIN_ID, admin_msg, reply_markup=markup)
@@ -197,7 +190,7 @@ def handle_admin_actions(call):
         bot.send_message(client_id, f"🎉 بشرى سارة! تم التحقق من دفعتك اليدوية وشحن حسابك بالباقة المطلوبة للطلب رقم ({order_id}). نتمنى لك وقتاً ممتعاً!")
     
     elif action == "no":
-        supabase.table("orders").update({"status": "mrfod"}).eq("id", order_id).execute()
+        supabase.table("orders").update({"status": "مرفوض"}).eq("id", order_id).execute()
         
         if call.message.content_type == 'photo':
             bot.edit_message_caption(chat_id=ADMIN_ID, message_id=call.message.message_id, caption=f"❌ تم رفض وإلغاء الطلب رقم #{order_id}.")
@@ -206,7 +199,7 @@ def handle_admin_actions(call):
             
         bot.send_message(client_id, f"⚠️ إشعار: تم رفض طلب الشحن رقم ({order_id}) بسبب عدم وصول قيمة التحويل أو خطأ بالإيصال المرفق. يرجى مراجعة الدعم الفني.")
 
-# 6. تفعيل الـ Webhook عند بدء تشغيل تطبيق الـ FastAPI على سيرفر Render
+# 6. تفعيل الـ Webhook عند بدء تشغيل تطبيق الـ FastAPI
 @app.on_event("startup")
 def startup_event():
     if RENDER_URL:
