@@ -20,7 +20,7 @@ SHAM_CASH_NUM = os.getenv("SHAM_CASH_NUM", "[09xxxxxxxx]")
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 app = FastAPI()
 
-# تهيئة سوبابيس المستقرة
+# تهيئة سوبابيس
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 user_sessions = {}
@@ -39,6 +39,7 @@ async def process_webhook(request: Request):
     bot.process_new_updates([update])
     return {"status": "ok"}
 
+# أمر /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
@@ -53,7 +54,6 @@ def send_welcome(message):
     except Exception as e:
         print(f"Supabase Error: {e}")
 
-    # إضافة رقم عشوائي خلف الرابط لكسر الكاش المزعج في التليجرام وإجبار الهاتف على عرض الباقات الجديدة
     cache_buster = random.randint(1000, 9999)
     webapp_url = f"{RENDER_URL}/frontend/index.html?v={cache_buster}"
     
@@ -61,18 +61,48 @@ def send_welcome(message):
     web_app_info = telebot.types.WebAppInfo(url=webapp_url)
     markup.add(KeyboardButton(text="🎮 فتح المتجر الإلكتروني", web_app=web_app_info))
 
-    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب الإلكترونية الاحترافي!\n\nاضغط على الزر بالأسفل لفتح المتجر الجديد واختيار باقاتك المفضلة:", reply_markup=markup)
+    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب الإلكترونية الاحترافي!\n\nاضغط على الزر بالأسفل لفتح المتجر واختيار باقاتك المفضلة:", reply_markup=markup)
 
+# إضافة أمر /admin يدوي لعرض الطلبات المعلقة للأدمن
+@bot.message_handler(commands=['admin'])
+def admin_panel(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        bot.reply_to(message, "❌ عذراً، هذا الأمر مخصص لمالك المتجر فقط!")
+        return
+    
+    try:
+        response = supabase.table("orders").select("*").eq("status", "بانتظار المراجعة").execute()
+        orders = response.data
+        
+        if not orders:
+            bot.reply_to(message, "🎉 لا توجد أي طلبات معلقة بانتظار المراجعة حالياً!")
+            return
+            
+        bot.reply_to(message, f"📋 يوجد حالياً مجموع ({len(orders)}) طلبات بانتظار المراجعة والتفعيل. تفقد رسائل الدفع الواردة للتحكم بها.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ حدث خطأ أثناء جلب البيانات: {e}")
+
+# استقبال البيانات القادمة من واجهة الويب بعد الضغط على زر التأكيد
 @bot.message_handler(content_types=['web_app_data'])
 def handle_webapp_data(message):
     try:
         user_id = str(message.from_user.id)
         data = json.loads(message.web_app_data.data)
 
+        # تفكيك الباقة والسعر بدقة بعد التعديل الثابت
+        package_info = data["packageName"][0] if isinstance(data["packageName"], list) else data["packageName"]
+        price_info = data["price"][1] if isinstance(data["price"], list) else data["price"]
+
+        if "|" in package_info:
+            qty, prc = package_info.split("|")
+        else:
+            qty = package_info
+            prc = price_info
+
         user_sessions[user_id] = {
             "game": data["gameName"],
-            "package": data["packageName"],
-            "price": data["price"],
+            "package": qty,
+            "price": prc,
             "player_id": data["playerId"],
             "payment_method": data["paymentMethod"],
             "step": "WAITING_PROOF"
@@ -83,9 +113,9 @@ def handle_webapp_data(message):
         bot.reply_to(message, 
             f"📝 *تم استقبال تفاصيل طلبك بنجاح:*\n\n"
             f"🎮 اللعبة: {data['gameName']}\n"
-            f"📦 الباقة المطلوبة: {data['packageName']}\n"
+            f"📦 الباقة المطلوبة: {qty}\n"
             f"🆔 معرف اللاعب (Player ID): `{data['playerId']}`\n"
-            f"💰 الإجمالي المطلوب: {data['price']} دولار\n\n"
+            f"💰 الإجمالي المطلوب: {prc} دولار\n\n"
             f"-------------------------\n"
             f"⚙️ *تعليمات الدفع اليدوي المحمي عبر ({selected_pay['name']}):*\n"
             f"{selected_pay['msg']}\n\n"
@@ -93,7 +123,7 @@ def handle_webapp_data(message):
         )
     except Exception as e:
         print(f"WebApp Data Error: {e}")
-        bot.reply_to(message, "❌ حدث خطأ غير متوقع أثناء معالجة طلبك، يرجى إعادة المحاولة من داخل واجهة المتجر.")
+        bot.reply_to(message, "❌ حدث خطأ غير متوقع أثناء معالجة طلبك، يرجى إعادة المحاولة.")
 
 @bot.message_handler(content_types=['photo', 'text'])
 def handle_payment_proof(message):
