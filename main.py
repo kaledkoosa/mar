@@ -100,7 +100,7 @@ def send_welcome(message):
         f"👋 أهلاً بك في متجر عبد البصير الإلكتروني!\n\n"
         f"🆔 معرفك الشخصي: `{user_id}`\n"
         f"💰 رصيدك الحالي: {balance:.2f} دولار\n"
-        f"🔄 سعر الصرف المعتمد: 1$ = {USD_TO_SYP:,} ل.س\n\n"
+        f"🔄 سعر الصرف المعتمد: 1\$ = {USD_TO_SYP:,} ل.س\n\n"
         f"استخدم الأزرار أدناه للتنقل داخل المتجر وشحن حسابك."
     )
     
@@ -122,7 +122,7 @@ def handle_callbacks(call):
     
     if call.data == "request_deposit":
         deposit_instruction = (
-            f"💳 **%D8%AA%D8%B9%D9%84%D9%8A%D9%85%D8%A7%D8%AA الإيداع عبر محفظة شام كاش:**\n\n"
+            f"💳 **تعليمات الإيداع عبر محفظة شام كاش:**\n\n"
             f"يرجى تحويل المبلغ المراد شحنه بالليرة السورية إلى الحساب التالي:\n"
             f"📞 **رقم المحفظة:** `{SHAM_CASH_NUMBER}`\n"
             f"👤 **اسم صاحب الحساب:** {SHAM_CASH_NAME}\n\n"
@@ -131,146 +131,49 @@ def handle_callbacks(call):
         bot.send_message(user_id, deposit_instruction, parse_mode="Markdown")
         bot.register_next_step_handler_by_chat_id(call.message.chat.id, process_deposit_proof)
         bot.answer_callback_query(call.id)
-        
-    elif call.data.startswith("approve_"):
-        _, dep_id, c_user_id, amount_usd = call.data.split("_")
-        dep_id, c_user_id, amount_usd = int(dep_id), int(c_user_id), float(amount_usd)
-        
+
+def process_deposit_proof(message):
+    """معالجة رقم الحوالة المرسل من المستخدم وإشعار المسؤول"""
+    user_id = message.from_user.id
+    reference_code = message.text.strip()
+    
+    # حفظ الإيداع بقاعدة البيانات بحالة انتظار التفعيل PENDING
+    try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT status FROM deposits WHERE deposit_id = ?", (dep_id,))
-        row = cursor.fetchone()
-        
-        if row and row['status'] == 'PENDING':
-            cursor.execute("UPDATE deposits SET status = 'APPROVED' WHERE deposit_id = ?", (dep_id,))
-            conn.commit()
-            conn.close()
-            
-            update_user_balance(c_user_id, amount_usd)
-            new_balance = get_user_balance(c_user_id)
-            
-            bot.send_message(c_user_id, f"✅ **تم تأكيد إيداعك بنجاح!**\n💰 أضيف لحسابك: `+{amount_usd:.2f}$`\n💳 رصيدك الإجمالي: `{new_balance:.2f}$`")
-            bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🟢 تم قبول طلب الإيداع رقم #{dep_id} بنجاح.")
-        else:
-            conn.close()
-            bot.answer_callback_query(call.id, "هذا الطلب تم معالجته مسبقاً!")
-            
-    elif call.data.startswith("reject_"):
-        _, dep_id, c_user_id = call.data.split("_")
-        dep_id, c_user_id = int(dep_id), int(c_user_id)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE deposits SET status = 'REJECTED' WHERE deposit_id = ?", (dep_id,))
+        cursor.execute("INSERT INTO deposits (user_id, reference_code, status) VALUES (?, ?, 'PENDING')", (user_id, reference_code))
         conn.commit()
         conn.close()
         
-        bot.send_message(c_user_id, "❌ تم رفض طلب الإيداع. يرجى التواصل مع الدعم للتحقق.")
-        bot.edit_message_text(chat_id=ADMIN_CHAT_ID, message_id=call.message.message_id, text=f"🔴 تم رفض طلب الإيداع رقم #{dep_id} .")
-
-def process_deposit_proof(message):
-    user_id = message.from_user.id
-    proof_text = message.text
-    
-    if not proof_text or proof_text.startswith('/'):
-        bot.send_message(user_id, "❌ خطأ: يرجى إرسال إشعار تحويل صحيح.")
-        return
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO deposits (user_id, reference_code, amount_syp) VALUES (?, ?, ?)", (user_id, proof_text, 0.0))
-    dep_id = cursor.lastrow_id
-    conn.commit()
-    conn.close()
-    
-    bot.send_message(user_id, "⏳ جاري مراجعة طلب الإيداع الخاص بك من قِبل الإدارة...")
-    
-    admin_markup = types.InlineKeyboardMarkup()
-    estimated_usd = 5.0 
-    
-    btn_approve = types.InlineKeyboardButton(text="🟢 قبول (5$)", callback_data=f"approve_{dep_id}_{user_id}_{estimated_usd}")
-    btn_reject = types.InlineKeyboardButton(text="🔴 رفض", callback_data=f"reject_{dep_id}_{user_id}")
-    admin_markup.add(btn_approve, btn_reject)
-    
-    admin_notification = (
-        f"🚨 **طلب إيداع معلق** 🚨\n\n"
-        f"👤 العميل: `{user_id}`\n"
-        f"🔢 الإثبات: `{proof_text}`\n\n"
-        f"اختر إجراء الإشعار المباشر:"
-    )
-    bot.send_message(ADMIN_CHAT_ID, admin_notification, reply_markup=admin_markup)
-
-# ==================== مسارات خادم الويب (Flask) ====================
-
-@app.route('/')
-def home():
-    return "🚀 متجر عبد البصير يعمل بثبات تام وبدون توقف إجباري!", 200
-
-# تصحيح مسار استقبال الـ Webhook بشكل آمن ومحمي لمنع التوقف المبكر
-@app.route('/' + BOT_TOKEN, methods=['POST'])
-def get_message():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "OK", 200
-    else:
-        return jsonify({"error": "Invalid Content-Type"}), 403
-
-@app.route('/shop/<int:user_id>')
-def shop_interface(user_id):
-    try:
-        balance = get_user_balance(user_id)
+        bot.reply_to(message, "✅ تم استلام رقم العملية بنجاح! سيقوم المسؤول بمراجعة التحويل وإضافة الرصيد إلى حسابك فوراً.")
+        
+        # إشعار الأدمن بالعملية الجديدة إذا تم تعيين المعرف
+        if ADMIN_CHAT_ID != 0:
+            admin_text = f"🚨 **طلب إيداع جديد قيد الانتظار:**\n\n👤 المستخدم: `{user_id}`\n🔢 رقم العملية: `{reference_code}`"
+            bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="Markdown")
+            
     except Exception as e:
-        return f"Error: {str(e)}"
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-    except:
-        return "Error: index.html not found."
-    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
-    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
-    return render_template_string(html_content)
+        print(f"Error processing deposit: {str(e)}")
+        bot.reply_to(message, "❌ حدث خطأ أثناء حفظ بيانات العملية، يرجى المحاولة لاحقاً.")
 
-def async_send_order(user_id, item, player_id):
-    try:
-        admin_msg = (
-            f"📥 **طلب مبيعات جديد** 📥\n\n"
-            f"👤 المشتري ID: `{user_id}`\n"
-            f"📦 الباقة: **{item['name']}**\n"
-            f"🆔 اللاعب: `{player_id}`"
-        )
-        bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
-        update_user_balance(user_id, -item["price"])
-        new_balance = get_user_balance(user_id)
-        user_msg = f"🔄 تم خصم {item['price']} دولار وشراء **{item['name']}** بنجاح!\n💰 رصيدك الحالي: {new_balance:.2f}$"
-        bot.send_message(user_id, user_msg)
-    except Exception as e:
-        print(f"Error in async_send_order: {str(e)}")
-
-@app.route('/api/buy', methods=['POST', 'OPTIONS'])
-def api_buy_item():
-    if request.method == 'OPTIONS':
-        response = jsonify({"success": True})
 # ==================== مسارات الويب وخادم التشغيل ====================
 
 @app.route('/')
-def home():
-    return "🚀 البوت وخادم الويب يعملان بنجاح وبدون مشاكل!"
+def render_home(): 
+    # تم تغيير الاسم هنا لمنع التعارض مع أي دالة 'home' أخرى في مشروعك
+    return "🚀 خادم الويب والبوت يعملان معاً بنجاح دون أي تضارب!"
 
-# مسار المتجر الإلكتروني الخاص بك (تأكد من تعديله ليناسب مشروعك لاحقاً)
 @app.route('/shop/<int:user_id>')
 def shop(user_id):
-    return f"🛒 مرحباً بك في المتجر الإلكتروني للمستخدم: {user_id}"
+    return f"🛒 واجهة المتجر الإلكتروني للمستخدم: {user_id} جاهزة للربط والعمل."
 
 def run_flask():
-    """تشغيل خادم الويب على المنفذ المطلوب من منصة Render"""
-    # جلب المنفذ تلقائياً من نظام ريندر أو استخدام 8080 كافتراضي لتجنب كراش التشغيل
+    """تشغيل خادم الويب على المنفذ المطلوب من منصة Render بشكل ديناميكي"""
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
-    # 1. تشغيل خادم Flask في خيط معالجة (Thread) منفصل بالخلفية
+    # 1. تشغيل خادم ويب Flask في الخلفية باستخدام الـ Threads
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
@@ -278,6 +181,5 @@ if __name__ == "__main__":
     print("🌐 Web Server started in background...")
     print("🤖 Telegram Bot is starting polling...")
     
-    # 2. تشغيل البوت بشكل مستمر لحمايته من الانغلاق
-    # خيار non_stop=True يضمن إعادة تشغيل البوت تلقائياً في حال انقطع الاتصال للحظات
+    # 2. تشغيل البوت بشكل لا نهائي ومستمر لاستقبال الرسائل
     bot.infinity_polling(non_stop=True)
