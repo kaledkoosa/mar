@@ -115,7 +115,6 @@ def admin_panel(message):
     )
     bot.send_message(ADMIN_CHAT_ID, admin_text, parse_mode="Markdown")
 
-# تصحيح دالة الاستخراج وإغلاق الأقواس بالكامل
 @bot.message_handler(commands=['pay', 'deposit'])
 def manual_admin_deposit(message):
     if message.chat.id != ADMIN_CHAT_ID:
@@ -136,7 +135,7 @@ def manual_admin_deposit(message):
     except:
         bot.send_message(ADMIN_CHAT_ID, f"❌ الصيغة الصحيحة: `/pay USER_ID AMOUNT`", parse_mode="Markdown")
 
-# 📥 نظام معالجة أزرار القبول والرفض للآدمن
+# --- نظام معالجة أزرار القبول والرفض للآدمن ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith(("app_", "rej_")))
 def handle_order_status(call):
     if call.message.chat.id != ADMIN_CHAT_ID:
@@ -239,3 +238,4 @@ def async_send_order(user_id, item_key, item, player_id):
         print(f"Async Order Notification Error: {str(e)}")
 
 @app.route('/api/buy', methods=['POST', 'OPTIONS'])
+def api_buy_item():
