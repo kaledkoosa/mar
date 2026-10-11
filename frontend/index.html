@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>متجر شحن الألعاب</title>
+  <!-- سكربت تليجرام الرسمي لتفعيل خصائص الـ Web App -->
+  <script src="https://telegram.org"></script>
+  <style>
+    :root {
+      --bg-color: var(--tg-theme-bg-color, #1c1c1e);
+      --text-color: var(--tg-theme-text-color, #ffffff);
+      --hint-color: var(--tg-theme-hint-color, #eaeaea);
+      --button-color: var(--tg-theme-button-color, #34c759);
+      --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #2c2c2e);
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      padding: 15px;
+      margin: 0;
+      text-align: center;
+    }
+    .card {
+      background-color: var(--secondary-bg);
+      padding: 20px;
+      margin: 15px 0;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    label {
+      display: block;
+      text-align: right;
+      margin-top: 10px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    select, input {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
+      color: var(--text-color);
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    select option { background: #2c2c2e; color: #fff; }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 15px;
+      border-radius: 8px;
+      border: none;
+      background-color: var(--button-color);
+      color: var(--button-text-color);
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>🎮 متجر شحن الألعاب السريع</h2>
+  <p style="color: var(--hint-color)">اختر باقة الشحن المفضلة لديك وعش المغامرة</p>
+
+  <div class="card">
+    <label> اختر اللعبة:</label>
+    <select id="game" onchange="updatePackages()">
+      <option value="pubg">ببجي موبايل (PUBG MOBILE)</option>
+      <option value="ff">فري فاير (FREE FIRE)</option>
+    </select>
+
+    <label> اختر الكمية والسعر:</label>
+    <select id="package"></select>
+
+    <label> معرف اللاعب (Player ID):</label>
+    <input type="number" id="playerId" placeholder="اكتب الـ ID الخاص بك هنا" required>
+
+    <label> وسيلة الدفع اليدوية:</label>
+    <select id="payment">
+      <option value="shamcash">شام كاش (ShamCash)</option>
+      <option value="cwallet">محفظة CWallet (USDT)</option>
+    </select>
+
+    <button onclick="sendOrder()">تأكيد الطلب والانتقال للدفع 💳</button>
+  </div>
+
+  <script>
+    // تهيئة وتوسيع واجهة تليجرام
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    // قائمة البيانات والأسعار المخزنة داخل الواجهة
+    const dataConfig = {
+      pubg: {
+        name: 'ببجي موبايل (PUBG)',
+        packages: [
+          { name: '60 شدة - \$1.0', val: '60 شدة', price: '1.0' },
+          { name: '325 شدة - \$5.0', val: '325 شدة', price: '5.0' },
+          { name: '660 شدة - \$10.0', val: '660 شدة', price: '10.0' }
+        ]
+      },
+      ff: {
+        name: 'فري فاير (Free Fire)',
+        packages: [
+          { name: '100 جوهرة - \$1.0', val: '100 جوهرة', price: '1.0' },
+          { name: '210 جوهرة - \$2.0', val: '210 جوهرة', price: '2.0' },
+          { name: '530 جوهرة - \$5.0', val: '530 جوهرة', price: '5.0' }
+        ]
+      }
+    };
+
+    function updatePackages() {
+      const gameKey = document.getElementById('game').value;
+      const packSelect = document.getElementById('package');
+      packSelect.innerHTML = '';
+      
+      dataConfig[gameKey].packages.forEach((p, index) => {
+        let opt = document.createElement('option');
+        // نضع القيمة المخفية كـ نص مدمج يحتوي على الكمية والسعر مفصولين بـ | لسهولة معالجتها في البوت
+        opt.value = `${p.val}|${p.price}`;
+        opt.innerText = p.name;
+        packSelect.appendChild(opt);
+      });
+    }
+
+    function sendOrder() {
+      const gameKey = document.getElementById('game').value;
+      const packageRaw = document.getElementById('package').value.split('|');
+      const playerId = document.getElementById('playerId').value.trim();
+      const payment = document.getElementById('payment').value;
+
+      if (!playerId) {
+        alert('من فضلك أدخل معرف اللاعب (Player ID) أولاً!');
+        return;
+      }
+
+      // تجهيز كائن البيانات لإرساله للبوت
+      const orderData = {
+        gameName: dataConfig[gameKey].name,
+        packageName: packageRaw[0],
+        price: packageRaw[1],
+        playerId: playerId,
+        paymentMethod: payment
+      };
+
+      // إرسال البيانات المحددة فورياً للبوت وإغلاق نافذة الويب تلقائياً
+      tg.sendData(JSON.stringify(orderData));
+    }
+
+    // تشغيل الدالة تلقائياً عند فتح الصفحة لعرض حزم اللعبة الأولى
+    updatePackages();
+  </script>
+</body>
+</html>
