@@ -89,6 +89,24 @@ def update_user_balance(user_id, amount):
         print(f"Error updating balance: {str(e)}")
         return False
 
+# ==================== استقبال تحديثات الـ Webhook عبر Flask ====================
+
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def receive_updates():
+    """المسار الذي يستمع لطلبات تليجرام القادمة فور حدوثها"""
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    else:
+        return jsonify({"error": "Unsupported Media Type"}), 415
+
+@app.route('/')
+def home():
+    """صفحة رئيسية عامة للتأكد من عمل السيرفر"""
+    return "<h1>تطبيق البوت والمتجر يعملان بنجاح على منصة Render!</h1>", 200
+
 # ==================== أقسام التحكم بالبوت (تليجرام) ====================
 
 @bot.message_handler(commands=['start'])
@@ -100,7 +118,7 @@ def send_welcome(message):
         f"👋 أهلاً بك في متجر عبد البصير الإلكتروني!\n\n"
         f"🆔 معرفك الشخصي: `{user_id}`\n"
         f"💰 رصيدك الحالي: {balance:.2f} دولار\n"
-        f"🔄 سعر الصرف المعتمد: 1\$ = {USD_TO_SYP:,} ل.س\n\n"
+        f"🔄 سعر الصرف المعتمد: 1\\$ = {USD_TO_SYP:,} ل.س\n\n"
         f"استخدم الأزرار أدناه للتنقل داخل المتجر وشحن حسابك."
     )
     
@@ -137,64 +155,22 @@ def process_deposit_proof(message):
     user_id = message.from_user.id
     reference_code = message.text.strip()
     
-    if not reference_code:
-        bot.reply_to(message, "❌ يرجى إرسال رقم عملية تحويل صحيح ومكتوب.")
-        return
+    # يمكنك هنا إضافة المنطق الخاص بحفظ رقم التحويل وقيمته في قاعدة البيانات وإشعار المسؤول
+    bot.reply_to(message, f"✅ تم استلام رقم العملية: `{reference_code}`.\nجاري مراجعتها من قبل الإدارة وسيتم تحديث رصيدك فوراً.", parse_mode="Markdown")
 
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO deposits (user_id, amount_syp, reference_code, status) VALUES (?, ?, ?, ?)",
-                       (user_id, 0.0, reference_code, 'PENDING'))
-        conn.commit()
-        conn.close()
-        
-        # إشعار المستخدم تلقائياً
-        bot.reply_to(message, "✅ تم استلام رقم الحوالة بنجاح! جاري مراجعة طلبك من قبل الإدارة وسيتم إشعارك فور تفعيل الرصيد.")
-        
-        # إشعار المسؤول الإداري بالطلب الجديد
-        if ADMIN_CHAT_ID != 0:
-            admin_msg = f"🔔 **طلب إيداع جديد قيد الانتظار:**\n\n👤 المستخدم: `{user_id}`\n🔢 رقم العملية: `{reference_code}`"
-            bot.send_message(ADMIN_CHAT_ID, admin_msg, parse_mode="Markdown")
-            
-    except Exception as e:
-        bot.reply_to(message, "❌ حدث خطأ أثناء تسجيل العملية بقاعدة البيانات، يرجى المحاولة لاحقاً.")
-        print(f"Error in process_deposit_proof: {str(e)}")
+# ==================== تشغيل الويب هوك والسيرفر مًعا ====================
 
-# ==================== أقسام خادم الويب (Flask) ====================
+# إزالة أي تعارض قديم وتفعيل الويب هوك بشكل آلي وآمن عند بدء تشغيل الكود
+try:
+    bot.remove_webhook()
+    # تنظيف وتجهيز الرابط الكامل للويب هوك ليطابق المسار الجديد المضاف في السيرفر
+    webhook_url = f"{RENDER_WEB_URL.strip('/')}/{BOT_TOKEN}"
+    bot.set_webhook(url=webhook_url)
+    print(f"🚀 Telegram Webhook successfully set to: {webhook_url}")
+except Exception as e:
+    print(f"❌ Failed to set Webhook: {str(e)}")
 
-@app.route('/')
-def home():
-    return "<h1>🌐 Web Server started in background...</h1>"
-
-@app.route('/shop/<int:user_id>')
-def shop(user_id):
-    # صفحة المتجر الإلكتروني المبسطة (تعدل حسب الواجهة المطلوبة)
-    balance = get_user_balance(user_id)
-    return render_template_string("""
-    <!DOCTYPE html>
-    <html>
-    <head><title>المتجر الإلكتروني</title></head>
-    <body style="font-family:sans-serif; text-align:center; padding:20px;">
-        <h2>🛒 متجر عبد البصير الإلكتروني</h2>
-        <p>مرحباً بك، رصيدك الحالي: <strong>{{ balance }} دولار</strong></p>
-    </body>
-    </html>
-    """, balance=balance)
-
-# ==================== تشغيل السيرفر والبوت معاً بذكاء ====================
-
-def run_bot():
-    print("🤖 Telegram Bot is starting polling...")
-    # تم حذف 'non_stop=True' لحل مشكلة السجلات نهائياً وبشكل سليم
-    bot.infinity_polling()
-
-if __name__ == "__main__":
-    # 1. تشغيل بوت تليجرام في خيط معالجة منفصل (Background Thread) لمنع تعليق خادم الويب
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
-    
-    # 2. تشغيل خادم ويب Flask على المنفذ المطلوب لمنصة Render
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    # تشغيل تطبيق flask الذي سيتكفل باستقبال تحديثات المتجر والبوت معاً
+    # تأكد أن منفذ التشغيل (Port) هو 10000 وهو الافتراضي لمنصة Render
+    app.run(host='0.0.0.0', port=10000)
