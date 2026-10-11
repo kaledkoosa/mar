@@ -84,7 +84,7 @@
   <div class="card">
     <div class="form-group">
       <label>🕹️ اختر اللعبة المستهدفة:</label>
-      <select id="game" onchange="updatePackages()">
+      <select id="game" onchange="updatePackagesDirectly()">
         <option value="pubg">ببجي موبايل (PUBG MOBILE)</option>
         <option value="ff">فري فاير (FREE FIRE)</option>
       </select>
@@ -93,7 +93,10 @@
     <div class="form-group">
       <label>💎 اختر كمية الشحن والسعر:</label>
       <select id="package">
-        <!-- سيتم ملؤها تلقائياً وبشكل فوري وثابت عبر السكربت -->
+        <!-- تم وضع الباقات ثابتة وجاهزة للمرة الأولى لتفادي مشكلة الاختفاء نهائياً -->
+        <option value="60 شدة|1">60 شدة ── 1 دولار</option>
+        <option value="325 شدة|5">325 شدة ── 5 دولار</option>
+        <option value="660 شدة|10">660 شدة ── 10 دولار</option>
       </select>
     </div>
 
@@ -118,37 +121,36 @@
     tg.ready();
     tg.expand();
 
-    // الباقات الثابتة والمضمونة للظهور فوراً
-    const packagesData = {
-      pubg: [
-        { text: "60 شدة ── 1 دولار", qty: "60 شدة", price: "1" },
-        { text: "325 شدة ── 5 دولار", qty: "325 شدة", price: "5" },
-        { text: "660 شدة ── 10 دولار", qty: "660 شدة", price: "10" }
-      ],
-      ff: [
-        { text: "100 جوهرة ── 1 دولار", qty: "100 جوهرة", price: "1" },
-        { text: "210 جوهرة ── 2 دولار", qty: "210 جوهرة", price: "2" },
-        { text: "530 جوهرة ── 5 دولار", qty: "530 جوهرة", price: "5" }
-      ]
-    };
-
-    function updatePackages() {
+    // دالة التغيير المباشر والمضمونة للتبديل بين اللعبتين بسلاسة
+    function updatePackagesDirectly() {
       const gameSelect = document.getElementById('game').value;
       const packageSelect = document.getElementById('package');
       packageSelect.innerHTML = '';
 
-      packagesData[gameSelect].forEach(p => {
-        let opt = document.createElement('option');
-        opt.value = `${p.qty}|${p.price}`;
-        opt.innerText = p.text;
-        packageSelect.appendChild(opt);
-      });
+      if (gameSelect === 'pubg') {
+        packageSelect.innerHTML = `
+          <option value="60 شدة|1">60 شدة ── 1 دولار</option>
+          <option value="325 شدة|5">325 شدة ── 5 دولار</option>
+          <option value="660 شدة|10">660 شدة ── 10 دولار</option>
+        `;
+      } else if (gameSelect === 'ff') {
+        packageSelect.innerHTML = `
+          <option value="100 جوهرة|1">100 جوهرة ── 1 دولار</option>
+          <option value="210 جوهرة|2">210 جوهرة ── 2 دولار</option>
+          <option value="530 جوهرة|5">530 جوهرة ── 5 دولار</option>
+        `;
+      }
     }
 
     function sendOrder() {
       const gameSelect = document.getElementById('game');
       const gameName = gameSelect.options[gameSelect.selectedIndex].text;
-      const packageValue = document.getElementById('package').value.split('|');
+      const packageSelect = document.getElementById('package').value;
+      
+      // تفكيك القيم المحددة بدقة لبايثون
+      const packageRaw = packageSelect.split('|')[0];
+      const priceRaw = packageSelect.split('|')[1];
+      
       const playerId = document.getElementById('playerId').value.trim();
       const payment = document.getElementById('payment').value;
 
@@ -159,18 +161,15 @@
 
       const orderData = {
         gameName: gameName,
-        packageName: packageValue[0],
-        price: packageValue[1],
+        packageName: packageRaw,
+        price: priceRaw,
         playerId: playerId,
         paymentMethod: payment
       };
 
-      // إرسال البيانات وإغلاق الواجهة فوراً
+      // إرسال البيانات المحددة للبوت وإغلاق الواجهة
       tg.sendData(JSON.stringify(orderData));
     }
-
-    // تشغيل الدالة فوراً عند فتح الصفحة للتأكد من تعبئة الجدول الأول
-    updatePackages();
   </script>
 </body>
 </html>
