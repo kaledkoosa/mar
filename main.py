@@ -5,22 +5,29 @@ from fastapi.staticfiles import StaticFiles
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from supabase import create_client, Client
+from supabase.client import ClientOptions
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # قراءة المتغيرات البيئية من موقع Render مباشرة
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_CHAT_ID")  # يتوافق مع اسم المتغير في صورتك تماماً
+ADMIN_ID = os.getenv("ADMIN_CHAT_ID")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")  # رابط سيرفر ريندر التلقائي
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 SHAM_CASH_NUM = os.getenv("SHAM_CASH_NUM", "[09xxxxxxxx]")
 
-# تهيئة البوت وقاعدة بيانات Supabase وخادم الويب
+# تهيئة البوت وخادم الويب
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = FastAPI()
+
+# تهيئة Supabase مع حل مشكلة الـ proxy وتحديد المهلة لتفادي الأخطاء
+supabase: Client = create_client(
+    SUPABASE_URL, 
+    SUPABASE_KEY, 
+    options=ClientOptions(postgrest_client_timeout=10)
+)
 
 # ذاكرة مؤقتة لحفظ حالات المستخدمين بانتظار رفع الإشعار اليدوي
 user_sessions = {}
@@ -60,7 +67,6 @@ def send_welcome(message):
 
     # إنشاء زر فتح واجهة الويب التفاعلية
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    # رابط واجهة الويب المباشر المستضاف على ريندر
     webapp_url = f"{RENDER_URL}/frontend/index.html"
     web_app_info = telebot.types.WebAppInfo(url=webapp_url)
     markup.add(KeyboardButton(text="🎮 فتح المتجر الإلكتروني", web_app=web_app_info))
@@ -77,8 +83,8 @@ def handle_webapp_data(message):
         # حفظ تفاصيل الطلب مؤقتاً لحين رفع إشعار التحويل اليدوي
         user_sessions[user_id] = {
             "game": data["gameName"],
-            "package": data["packageName"][0], # جلب الكمية
-            "price": data["price"][1],         # جلب السعر
+            "package": data["packageName"],
+            "price": data["price"],
             "player_id": data["playerId"],
             "payment_method": data["paymentMethod"],
             "step": "WAITING_PROOF"
@@ -89,9 +95,9 @@ def handle_webapp_data(message):
         bot.reply_to(message, 
             f"📝 *تم استلام تفاصيل باقة الشحن:*\n\n"
             f"🎮 اللعبة: {data['gameName']}\n"
-            f"📦 الباقة: {data['packageName'][0]}\n"
+            f"📦 الباقة: {data['packageName']}\n"
             f"🆔 معرف اللاعب: `{data['playerId']}`\n"
-            f"💰 الإجمالي المطلوب: *\${data['price'][1]}*\n\n"
+            f"💰 الإجمالي المطلوب: {data['price']} دولار\n\n"
             f"-------------------------\n"
             f"⚙️ *تعليمات الدفع اليدوي عبر ({selected_pay['name']}):*\n"
             f"{selected_pay['msg']}\n\n"
@@ -110,7 +116,6 @@ def handle_payment_proof(message):
     if not session or session.get("step") != "WAITING_PROOF":
         return
 
-    # التحقق مما إذا كان الإثبات صورة أو نص
     if message.content_type == 'photo':
         session["proof_photo"] = message.photo[-1].file_id
         session["proof_text"] = message.caption or "تم إرفاق صورة إشعار التحويل"
@@ -124,7 +129,7 @@ def process_and_send_to_admin(message, user_id, session):
     try:
         method_title = payment_details[session["payment_method"]]["name"]
 
-        # تسجيل وحفظ الطلب في قاعدة بيانات Supabase بحالة "بانتظار المراجعة"
+        # تسجيل وحفظ الطلب في قاعدة بيانات Supabase
         response = supabase.table("orders").insert({
             "user_id": user_id,
             "game": session["game"],
@@ -140,19 +145,18 @@ def process_and_send_to_admin(message, user_id, session):
         order_data = response.data[0]
         bot.reply_to(message, "✅ شكراً لك! تم رفع إثبات الدفع وإرسال طلبك للإدارة بنجاح. سيتم مراجعة حسابنا وشحن حسابك وتنبيهك فوراً.")
 
-        # صياغة رسالة التحكم الخاصة بالأدمن (صاحب المتجر)
+        # صياغة رسالة التحكم الخاصة بالأدمن
         admin_msg = (
             f"🔔 *طلب شحن جديد رقم (#{order_data['id']})*\n\n"
             f"👤 العميل: [{message.from_user.first_name}](tg://user?id={user_id})\n"
             f"🎮 اللعبة: {order_data['game']}\n"
             f"📦 الحزمة: {order_data['package']}\n"
             f"🆔 معرف اللاعب: `{order_data['player_id']}`\n"
-            f"💰 السعر المطلوب: \${order_data['price']}\n"
+            f"💰 السعر المطلوب: {order_data['price']} دولار\n"
             f"💳 وسيلة الدفع: {order_data['payment_method']}\n"
             f"📝 الإثبات: {order_data['proof_text']}"
         )
 
-        # أزرار لوحة التحكم للأدمن
         markup = InlineKeyboardMarkup()
         markup.row(
             InlineKeyboardButton("✅ موافقة وشحن", callback_data=f"admin_ok_{order_data['id']}_{user_id}"),
@@ -164,7 +168,6 @@ def process_and_send_to_admin(message, user_id, session):
         else:
             bot.send_message(ADMIN_ID, admin_msg, reply_markup=markup)
 
-        # تنظيف الجلسة المؤقتة للعميل
         del user_sessions[user_id]
 
     except Exception as e:
@@ -185,13 +188,23 @@ def handle_admin_actions(call):
 
     if action == "ok":
         supabase.table("orders").update({"status": "مكتمل"}).eq("id", order_id).execute()
-        bot.edit_message_caption(chat_id=ADMIN_ID, message_id=call.message.message_id, caption=f"✅ تم قبول وشحن الطلب رقم #{order_id} بنجاح.") if call.message.content_type == 'photo' else bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"✅ تم قبول وشحن الطلب رقم #{order_id} بنجاح.")
-        bot.send_message(client_id, f"🎉 بشرى سارة! تم التحقق من دفعتك اليدوية وشحن حسابك بالباقة المطلوبة للطلب رقم (#{order_id}). نتمنى لك وقتاً ممتعاً!")
+        
+        if call.message.content_type == 'photo':
+            bot.edit_message_caption(chat_id=ADMIN_ID, message_id=call.message.message_id, caption=f"✅ تم قبول وشحن الطلب رقم #{order_id} بنجاح.")
+        else:
+            bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"✅ تم قبول وشحن الطلب رقم #{order_id} بنجاح.")
+            
+        bot.send_message(client_id, f"🎉 بشرى سارة! تم التحقق من دفعتك اليدوية وشحن حسابك بالباقة المطلوبة للطلب رقم ({order_id}). نتمنى لك وقتاً ممتعاً!")
     
     elif action == "no":
-        supabase.table("orders").update({"status": "مرفوض"}).eq("id", order_id).execute()
-        bot.edit_message_caption(chat_id=ADMIN_ID, message_id=call.message.message_id, caption=f"❌ تم رفض وإلغاء الطلب رقم #\${order_id}.") if call.message.content_type == 'photo' else bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"❌ تم رفض وإلغاء الطلب رقم #\${order_id}.")
-        bot.send_message(client_id, f"⚠️ إشعار: تم رفض طلب الشحن رقم (#{order_id}) بسبب عدم وصول قيمة التحويل أو خطأ بالإيصال المرفق. يرجى مراجعة الدعم الفني.")
+        supabase.table("orders").update({"status": "mrfod"}).eq("id", order_id).execute()
+        
+        if call.message.content_type == 'photo':
+            bot.edit_message_caption(chat_id=ADMIN_ID, message_id=call.message.message_id, caption=f"❌ تم رفض وإلغاء الطلب رقم #{order_id}.")
+        else:
+            bot.edit_message_text(chat_id=ADMIN_ID, message_id=call.message.message_id, text=f"❌ تم رفض وإلغاء الطلب رقم #{order_id}.")
+            
+        bot.send_message(client_id, f"⚠️ إشعار: تم رفض طلب الشحن رقم ({order_id}) بسبب عدم وصول قيمة التحويل أو خطأ بالإيصال المرفق. يرجى مراجعة الدعم الفني.")
 
 # 6. تفعيل الـ Webhook عند بدء تشغيل تطبيق الـ FastAPI على سيرفر Render
 @app.on_event("startup")
