@@ -14,7 +14,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 💳 بيانات محفظة شام كاش الخاصة بك (تُجلب من إعدادات Render أو القيم الافتراضية أدناه)
+# 💳 بيانات محفظة شام كاش الخاصة بك
 SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  
 SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "اسم صاحب الحساب") 
 USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) 
@@ -83,6 +83,31 @@ def update_user_balance(user_id, amount):
         print(f"Error updating balance: {str(e)}")
         return False
 
+# ==================== أقسام التحكم بالبوت (تليجرام) ====================
+
+# 🛠️ إضافة الاستجابة لأمر /start الذي كان مفقوداً
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_id = message.from_user.user_id if hasattr(message.from_user, 'user_id') else message.chat.id
+    balance = get_user_balance(user_id)
+    
+    welcome_text = (
+        f"👋 أهلاً بك في متجر عبد البصير الإلكتروني!\n\n"
+        f"🆔 معرفك الشخصي: `{user_id}`\n"
+        f"💰 رصيدك الحالي: {balance} دولار\n\n"
+        f"اضغط على الزر أدناه لفتح واجهة المتجر وشحن الألعاب مباشرة."
+    )
+    
+    # إنشاء زر يفتح المتجر كـ WebApp داخل تليجرام
+    markup = types.InlineKeyboardMarkup()
+    shop_url = f"{RENDER_WEB_URL.strip('/')}/shop/{user_id}"
+    web_app = types.WebAppInfo(shop_url)
+    markup.add(types.InlineKeyboardButton(text="🛒 فتح المتجر الإلكتروني", web_app=web_app))
+    
+    bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="Markdown")
+
+# ==================== مسارات خادم الويب (Flask) ====================
+
 @app.route('/')
 def home():
     return "🚀 متجر عبد البصير يعمل بنجاح تام وبأعلى استقرار عبر خادم SQLite المحلي!", 200
@@ -139,7 +164,6 @@ def api_buy_item():
         if not data:
             return jsonify({"success": False, "message": "بيانات فارغة!"}), 400
             
-        # جلب البيانات المرسلة من واجهة المتجر الإلكتروني
         user_id = data.get("user_id")
         item_id = data.get("item_id")
         player_id = data.get("player_id")
@@ -147,17 +171,14 @@ def api_buy_item():
         if not user_id or not item_id or not player_id:
             return jsonify({"success": False, "message": "جميع الحقول مطلوبة!"}), 400
             
-        # التحقق من وجود المنتج المختار في قائمة الأسعار
         item = PRICES.get(item_id)
         if not item:
             return jsonify({"success": False, "message": "المنتج غير موجود!"}), 404
             
-        # التحقق من رصيد المستخدم الحالي في قاعدة البيانات
         balance = get_user_balance(user_id)
         if balance < item["price"]:
             return jsonify({"success": False, "message": "رصيدك غير كافٍ لإتمام هذه العملية!"}), 400
             
-        # معالجة الطلب في الخلفية لتحديث الرصيد وإرسال إشعار للمشرف واللاعب
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
         
         response = jsonify({"success": True, "message": "تم تقديم طلبك بنجاح وجاري معالجته!"})
@@ -170,8 +191,20 @@ def api_buy_item():
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500
 
-# --- بدء تشغيل البوت وإعداد خادم الويب متوافقاً مع منصة Render ---
+# --- دالة ربط البوت برابط الاستضافة (Webhook) تلقائياً عند التشغيل ---
+def set_webhook():
+    try:
+        # حذف أي ربط قديم أولاً للتهيئة الإجبارية
+        bot.remove_webhook()
+        webhook_url = f"{RENDER_WEB_URL.strip('/')}/{BOT_TOKEN}"
+        bot.set_webhook(url=webhook_url)
+        print(f"🌐 Webhook successfully set to: {webhook_url}")
+    except Exception as e:
+        print(f"❌ Failed to set webhook: {str(e)}")
+
 if __name__ == "__main__":
-    # جلب منفذ التشغيل الديناميكي المخصص من Render تلقائياً
+    # تشغيل ربط الـ Webhook في خيط منفصل لتجنب عرقلة إقلاع خادم الفلاسك
+    threading.Thread(target=set_webhook).start()
+    
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
