@@ -1,0 +1,14 @@
+{
+  "name": "telegram-webapp-gameshop",
+  "version": "1.0.0",
+  "description": "Telegram WebApp Game Charging Bot with Manual Payments",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "@supabase/supabase-js": "^2.39.8",
+    "dotenv": "^16.4.5"
+  }
+}
