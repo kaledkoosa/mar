@@ -62,7 +62,7 @@ def send_welcome(message):
 
     # إنشاء زر فتح واجهة الويب التفاعلية
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    webapp_url = f"{RENDER_URL}/frontend/index.html"
+    webapp_url = f"{RENDER_URL}/frontend/index.html?v=1.2"
     web_app_info = telebot.types.WebAppInfo(url=webapp_url)
     markup.add(KeyboardButton(text="🎮 فتح المتجر الإلكتروني", web_app=web_app_info))
 
