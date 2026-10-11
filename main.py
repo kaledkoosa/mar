@@ -7,14 +7,16 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- المتغيرات البيئية من Render ---
+# --- جلب المتغيرات البيئية الحالية من لوحة Render الخاصة بك ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Your_Telegram_Username")
 
-# --- بيانات الدفع اليدوي عبر شام كاش (تظهر للعملاء) ---
-SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "0900000000") # رقم حسابك في شام كاش
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Your_Telegram_Username") # معرف حسابك الشخصي لاستقبال الإيصالات
+# متغيرات شام كاش وسعر الصرف المطابقة للصورة تماماً
+SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "0900000000") # يقرأ من الـ Key الخاص بك
+SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "عبد البصير")       # اسم صاحب الحساب الظاهر في المتجر
+USD_TO_SYP = os.environ.get("USD_TO_SYP", "15000")                 # سعر صرف الدولار مقابل الليرة السورية
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -57,7 +59,7 @@ def update_user_balance(user_id, amount):
     conn.commit()
     conn.close()
 
-# --- لوحة التحكم التفاعلية داخل تيلجرام ---
+# --- واجهة تيلجرام وعرض معلومات شام كاش المأخوذة من متغيراتك ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -65,12 +67,9 @@ def send_welcome(message):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     
-    # زر فتح المتجر الإلكتروني كميني آب
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     web_app_info = types.WebAppInfo(web_app_url)
     shop_button = types.InlineKeyboardButton(text="🛒 فتح متجر عبد البصير", web_app=web_app_info)
-    
-    # زر لعرض معلومات الإيداع اليدوي
     deposit_button = types.InlineKeyboardButton(text="💳 شحن حسابي (شام كاش)", callback_data="deposit_info")
     
     markup.add(shop_button, deposit_button)
@@ -79,29 +78,29 @@ def send_welcome(message):
         f"👋 مرحباً بك في متجر عبد البصير للشحن الفوري!\n\n"
         f"🆔 حسابك: `{user_id}`\n"
         f"💰 رصيدك الحالي: **{balance} \$**\n\n"
-        f"تصفح المتجر أو اشحن رصيدك يدوياً عبر الخيارات أدناه 👇"
+        f"اضغط على الخيارات أدناه لتصفح المتجر أو تعبئة رصيدك يدويّاً 👇"
     )
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# التعامل مع ضغط زر الإيداع اليدوي
 @bot.callback_query_handler(func=lambda call: call.data == "deposit_info")
 def show_deposit_details(call):
+    # استخدام المتغيرات الجديدة لشام كاش وسعر الصرف في نص الرسالة تلقائياً
     deposit_text = (
         f"⚠️ **خطوات الشحن اليدوي عبر شام كاش:**\n\n"
-        f"1️⃣ قم بتحويل المبلغ المطلوب إلى حسابنا في شام كاش:\n"
-        f"📱 رقم الحساب: `{SHAM_CASH_NUMBER}`\n\n"
-        f"2️⃣ بعد إتمام التحويل، يرجى إرسال لقطة شاشة للإيصال (صورة التحويل) مع ذكر **الـ ID الخاص بك** (`{call.from_user.id}`) إلى الدعم الفني:\n"
-        f"👤 الإدارة: @{ADMIN_USERNAME}\n\n"
-        f"⚙️ سيقوم المسؤول بمراجعة التحويل وإضافة الرصيد إلى حسابك خلال دقائق!"
+        f"1️⃣ قم بتحويل قيمة الرصيد المطلوبة بحساب (الدولار المحتسب بـ {USD_TO_SYP} ل.س):\n"
+        f"📱 رقم محفظة شام كاش: `{SHAM_CASH_NUMBER}`\n"
+        f"👤 اسم صاحب الحساب: **{SHAM_CASH_NAME}**\n\n"
+        f"2️⃣ بعد التحويل، التقط صورة للإيصال وأرسلها مع الـ ID الخاص بك (`{call.from_user.id}`) إلى الدعم الفني فورا لرفع رصيدك:\n"
+        f"👤 حساب الإدارة للتفعيل: @{ADMIN_USERNAME}\n\n"
+        f"⚙️ يتم التحقق وتأكيد الرصيد يدوياً من الإدارة خلال دقائق قليلة."
     )
     bot.send_message(call.from_user.id, deposit_text, parse_mode="Markdown")
 
-# --- ميزة الإدارة: شحن رصيد الزبائن بأمر من التيلجرام مباشرة ---
-# الطريقة: يرسل الآدمن رسالة بهذا الشكل: /deposit 12345678 10 (الآيدي ثم المبلغ)
+# أمر الإيداع اليدوي المخصص لك كمسؤول لشحن حسابات المستخدمين
 @bot.message_handler(commands=['deposit'])
 def manual_admin_deposit(message):
     if message.chat.id != ADMIN_CHAT_ID:
-        return # تجاهل الأمر إذا لم يكن من الآدمن المعتمد
+        return
         
     try:
         args = message.text.split()
@@ -111,13 +110,10 @@ def manual_admin_deposit(message):
         update_user_balance(target_user_id, amount)
         new_balance = get_user_balance(target_user_id)
         
-        # إشعار الآدمن بالنجاح
-        bot.send_message(ADMIN_CHAT_ID, f"✅ تم بنجاح إضافة `{amount} \$` لحساب العميل `{target_user_id}`.\n💰 رصيده الحالي أصبح: {new_balance} \$")
-        
-        # إشعار العميل تلقائياً بقدوم الرصيد
-        bot.send_message(target_user_id, f"🎉 بشرى سارة! تمت الموافقة على دفعتك اليدوية ونزولها في حسابك.\n➕ تم إضافة: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
+        bot.send_message(ADMIN_CHAT_ID, f"✅ تم شحن `{amount} \$` بنجاح للعميل `{target_user_id}`.\n💰 رصيده الكلي الآن: {new_balance} \$")
+        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
     except Exception as e:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ خطأ في صيغة الأمر. الصيغة الصحيحة:\n`/deposit USER_ID AMOUNT`\nمثال:\n`/deposit 5522345582 10.5`")
+        bot.send_message(ADMIN_CHAT_ID, f"❌ خطأ! يرجى استخدام الصيغة التالية صراحة:\n`/deposit USER_ID AMOUNT`\n\nمثال:\n`/deposit 5522345582 10`")
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
@@ -204,7 +200,7 @@ def api_buy_item():
 
 @app.route('/')
 def home():
-    return "Manual Deposit Store Online!", 200
+    return "Manual Deposit Store is Synchronized with Render Variables!", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
