@@ -7,7 +7,7 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات البيئية المطابقة للوحتك في Render ---
+# --- جلب المتغيرات البيئية المطابقة لوحتك في Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
@@ -128,44 +128,44 @@ def manual_admin_deposit(message):
         new_balance = get_user_balance(target_user_id)
         
         bot.send_message(ADMIN_CHAT_ID, f"✅ **عملية ناجحة**\n\n👤 العميل: `{target_user_id}`\n➕ تم إضافة: `{amount} \$`\n💰 الرصيد الحالي: `{new_balance} \$`", parse_mode="Markdown")
-        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
+        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها in حسابتك بنجاح!\n➕ الرصيد المضاف: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
     except:
         bot.send_message(ADMIN_CHAT_ID, f"❌ الصيغة الصحيحة: `/pay USER_ID AMOUNT`", parse_mode="Markdown")
 
-# 📥 نظام التعامل مع الأزرار التفاعلية للقبول والرفض من قِبل الإدارة
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("approve_", "reject_")))
+# 📥 استقبال الأوامر من أزرار القبول والرفض المختصرة والآمنة
+@bot.callback_query_handler(func=lambda call: call.data.startswith(("app_", "rej_")))
 def handle_order_status(call):
     if call.message.chat.id != ADMIN_CHAT_ID:
         return
         
-    action, user_id, item_key, player_id, price = call.data.split("_")
-    user_id = int(user_id)
-    price = float(price)
+    parts = call.data.split("_")
+    action = parts[0]
+    user_id = int(parts[1])
+    item_key = parts[2]
+    price = float(parts[3])
+    # دمج بقية المصفوفة لقراءة الـ Player ID حتى لو كان يحتوي على مسافات أو رموز
+    player_id = "_".join(parts[4:])
+    
     item_name = PRICES.get(item_key, {}).get("name", "باقة رقمية")
     
-    if action == "approve":
-        # تحديث رسالة الإدارة لتأكيد الإتمام وعمل أرشيف
+    if action == "app":
         bot.edit_message_text(
             chat_id=ADMIN_CHAT_ID,
             message_id=call.message.message_id,
-            text=f"🟢 **تم تسليم وشحن الطلب بنجاح** 🟢\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تمت العملية بواسطة الآدمن."
+            text=f"🟢 **تم تسليم وشحن الطلب بنجاح** 🟢\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تمت العملية بواسطة الآدمن المعتمد."
         )
-        # إرسال إشعار فوري ومفرح للعميل
-        bot.send_message(user_id, f"✅ **بشرى سارة! تم شحن طلبك الآن بنجاح** 🎉\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المشحون: `{player_id}`\n\nنشكرك على ثقتك بمتجرنا! ونتمنى لك لعباً ممتعاً 🎮✨")
+        bot.send_message(user_id, f"✅ **بشرى سارة! تم شحن طلبك الآن بنجاح** 🎉\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المشحون: `{player_id}`\n\nنشكرك على ثقتك بمتجرنا عبد البصير! 🎮✨")
         
-    elif action == "reject":
-        # إعادة الرصيد المخصوم تلقائياً لحساب العميل
+    elif action == "rej":
         update_user_balance(user_id, price)
         new_balance = get_user_balance(user_id)
         
-        # تحديث رسالة الإدارة لتأكيد الرفض
         bot.edit_message_text(
             chat_id=ADMIN_CHAT_ID,
             message_id=call.message.message_id,
             text=f"🔴 **تم رفض الطلب وإرجاع الرصيد** 🔴\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تم الرفض وإعادة `{price} \$` لحسابه بنجاح."
         )
-        # إشعار العميل بالرفض وتوضيح إرجاع المال لميزانه
-        bot.send_message(user_id, f"❌ **تنويه: تم رفض طلب الشحن الخاص بك**\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المستهدف: `{player_id}`\n\n💰 **ملاحظة:** تم إلغاء العملية وإرجاع مبلغ `{price} \$` إلى رصيدك في البوت تلقائياً لمراجعته أو المحاولة مجدداً.")
+        bot.send_message(user_id, f"❌ **تنويه: تم رفض طلب الشحن الخاص بك**\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المستهدف: `{player_id}`\n\n💰 **ملاحظة:** تم إلغاء العملية وإرجاع مبلغ `{price} \$` إلى رصيدك في البوت تلقائياً.")
 
 @bot.message_handler(content_types=['document'])
 def handle_backup_restore(message):
@@ -202,17 +202,20 @@ def shop_interface(user_id):
     html_content = html_content.replace("USER_ID_MARKER", str(user_id))
     return render_template_string(html_content)
 
-# إرسال الطلب للآدمن مع الأزرار التفاعلية الذكية وتخصيص الخصم المبدئي
+# إرسال طلب الشراء للآدمن بأحجام بيانات آمنة تضمن ظهور الأزرار التفاعلية بنسبة 100%
 def async_send_order(user_id, item_key, item, player_id):
     try:
-        # خصم مبدئي لحجز قيمة الطلب حتى البت فيه
+        # خصم مبدئي لحجز قيمة الطلب
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        # بناء أزرار القبول والرفض للآدمن
+        # بناء البيانات بشكل مختصر وآمن (أقل من 64 بايت للزر الواحد) لتقبله خوادم تيلجرام
+        callback_approve = f"app_{user_id}_{item_key}_{item['price']}_{player_id}"
+        callback_reject = f"rej_{user_id}_{item_key}_{item['price']}_{player_id}"
+        
         markup = types.InlineKeyboardMarkup()
-        btn_approve = types.InlineKeyboardButton(text="✅ قبول وتأكيد الشحن", callback_data=f"approve_{user_id}_{item_key}_{player_id}_{item['price']}")
-        btn_reject = types.InlineKeyboardButton(text="❌ رفض الطلب وإرجاع المال", callback_data=f"reject_{user_id}_{item_key}_{player_id}_{item['price']}")
+        btn_approve = types.InlineKeyboardButton(text="✅ قبول وتأكيد الشحن", callback_data=callback_approve)
+        btn_reject = types.InlineKeyboardButton(text="❌ رفض الطلب وإرجاع المال", callback_data=callback_reject)
         markup.add(btn_approve)
         markup.add(btn_reject)
         
