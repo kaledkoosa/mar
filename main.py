@@ -14,7 +14,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 
-# 💳 بيانات محفظة شام كاش الخاصة بك (يمكن وضعها هنا مباشرة أو في Render)
+# 💳 بيانات محفظة شام كاش الخاصة بك (تُجلب من إعدادات Render أو القيم الافتراضية أدناه)
 SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  
 SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "اسم صاحب الحساب") 
 USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) 
