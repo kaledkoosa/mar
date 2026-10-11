@@ -252,3 +252,32 @@ def async_send_order(user_id, item, player_id):
 def api_buy_item():
     if request.method == 'OPTIONS':
         response = jsonify({"success": True})
+# ==================== مسارات الويب وخادم التشغيل ====================
+
+@app.route('/')
+def home():
+    return "🚀 البوت وخادم الويب يعملان بنجاح وبدون مشاكل!"
+
+# مسار المتجر الإلكتروني الخاص بك (تأكد من تعديله ليناسب مشروعك لاحقاً)
+@app.route('/shop/<int:user_id>')
+def shop(user_id):
+    return f"🛒 مرحباً بك في المتجر الإلكتروني للمستخدم: {user_id}"
+
+def run_flask():
+    """تشغيل خادم الويب على المنفذ المطلوب من منصة Render"""
+    # جلب المنفذ تلقائياً من نظام ريندر أو استخدام 8080 كافتراضي لتجنب كراش التشغيل
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    # 1. تشغيل خادم Flask في خيط معالجة (Thread) منفصل بالخلفية
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    print("🌐 Web Server started in background...")
+    print("🤖 Telegram Bot is starting polling...")
+    
+    # 2. تشغيل البوت بشكل مستمر لحمايته من الانغلاق
+    # خيار non_stop=True يضمن إعادة تشغيل البوت تلقائياً في حال انقطع الاتصال للحظات
+    bot.infinity_polling(non_stop=True)
