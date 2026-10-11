@@ -1,22 +1,21 @@
 import telebot
 from telebot import types
-import sqlite3
+import json
 import os
 import threading
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات البيئية الحالية من لوحة Render الخاصة بك ---
+# --- جلب المتغيرات البيئية المطابقة للوحتك في Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Your_Telegram_Username")
 
-# متغيرات شام كاش وسعر الصرف المطابقة للصورة تماماً
-SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "0900000000") # يقرأ من الـ Key الخاص بك
-SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "عبد البصير")       # اسم صاحب الحساب الظاهر في المتجر
-USD_TO_SYP = os.environ.get("USD_TO_SYP", "15000")                 # سعر صرف الدولار مقابل الليرة السورية
+SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "0900000000")
+SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "عبد البصير")
+USD_TO_SYP = os.environ.get("USD_TO_SYP", "15000")
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -27,46 +26,52 @@ PRICES = {
     "ff_310": {"name": "310 جوهرة Free Fire", "price": 3.0}
 }
 
-DB_PATH = "/data/manual_shop.db" if os.path.exists("/data") else "manual_shop.db"
+# ملف حفظ الأرصدة المحلي التلقائي
+DATA_FILE = "users_data.json"
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)')
-    conn.commit()
-    conn.close()
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
-init_db()
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    
+    # ميزة الحفظ الاحتياطي التلقائي: إرسال نسخة للآدمن فوراً عند أي تعديل
+    try:
+        with open(DATA_FILE, "rb") as f:
+            bot.send_document(ADMIN_CHAT_ID, f, caption="💾 نسخة احتياطية تلقائية ومحدثة لأرصدة المتجر.")
+    except:
+        pass
 
 def get_user_balance(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    if row is None:
-        cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, 0.0)", (user_id,))
-        conn.commit()
-        balance = 0.0
-    else:
-        balance = row[0]
-    conn.close()
-    return float(balance)
+    data = load_data()
+    uid_str = str(user_id)
+    if uid_str not in data:
+        data[uid_str] = 0.0
+        save_data(data)
+    return float(data[uid_str])
 
 def update_user_balance(user_id, amount):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-    conn.commit()
-    conn.close()
+    data = load_data()
+    uid_str = str(user_id)
+    if uid_str not in data:
+        data[uid_str] = 0.0
+    data[uid_str] = round(data[uid_str] + amount, 2)
+    save_data(data)
 
-# --- واجهة تيلجرام وعرض معلومات شام كاش المأخوذة من متغيراتك ---
+# --- واجهات التحكم والرسائل عبر تيلجرام ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     
     markup = types.InlineKeyboardMarkup(row_width=1)
-    
     web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
     web_app_info = types.WebAppInfo(web_app_url)
     shop_button = types.InlineKeyboardButton(text="🛒 فتح متجر عبد البصير", web_app=web_app_info)
@@ -84,19 +89,18 @@ def send_welcome(message):
 
 @bot.callback_query_handler(func=lambda call: call.data == "deposit_info")
 def show_deposit_details(call):
-    # استخدام المتغيرات الجديدة لشام كاش وسعر الصرف في نص الرسالة تلقائياً
     deposit_text = (
         f"⚠️ **خطوات الشحن اليدوي عبر شام كاش:**\n\n"
         f"1️⃣ قم بتحويل قيمة الرصيد المطلوبة بحساب (الدولار المحتسب بـ {USD_TO_SYP} ل.س):\n"
         f"📱 رقم محفظة شام كاش: `{SHAM_CASH_NUMBER}`\n"
         f"👤 اسم صاحب الحساب: **{SHAM_CASH_NAME}**\n\n"
-        f"2️⃣ بعد التحويل، التقط صورة للإيصال وأرسلها مع الـ ID الخاص بك (`{call.from_user.id}`) إلى الدعم الفني فورا لرفع رصيدك:\n"
+        f"2️⃣ بعد التحويل، التقط صورة للإيصال وأرسلها مع الـ ID الخاص بك (`{call.from_user.id}`) إلى الدعم الفني فوراً لرفع رصيدك:\n"
         f"👤 حساب الإدارة للتفعيل: @{ADMIN_USERNAME}\n\n"
         f"⚙️ يتم التحقق وتأكيد الرصيد يدوياً من الإدارة خلال دقائق قليلة."
     )
     bot.send_message(call.from_user.id, deposit_text, parse_mode="Markdown")
 
-# أمر الإيداع اليدوي المخصص لك كمسؤول لشحن حسابات المستخدمين
+# أمر الإيداع للمسؤول
 @bot.message_handler(commands=['deposit'])
 def manual_admin_deposit(message):
     if message.chat.id != ADMIN_CHAT_ID:
@@ -110,10 +114,25 @@ def manual_admin_deposit(message):
         update_user_balance(target_user_id, amount)
         new_balance = get_user_balance(target_user_id)
         
-        bot.send_message(ADMIN_CHAT_ID, f"✅ تم شحن `{amount} \$` بنجاح للعميل `{target_user_id}`.\n💰 رصيده الكلي الآن: {new_balance} \$")
+        bot.send_message(ADMIN_CHAT_ID, f"✅ تم شحن `{amount} \$` للعميل `{target_user_id}`.\n💰 رصيده الكلي الآن: {new_balance} \$")
         bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
     except Exception as e:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ خطأ! يرجى استخدام الصيغة التالية صراحة:\n`/deposit USER_ID AMOUNT`\n\nمثال:\n`/deposit 5522345582 10`")
+        bot.send_message(ADMIN_CHAT_ID, f"❌ صيغة خاطئة، استخدم:\n`/deposit USER_ID AMOUNT`")
+
+# ميزة استعادة البيانات بمجرد إعادة إرسال ملف النسخة الاحتياطية للبوت من الآدمن
+@bot.message_handler(content_types=['document'])
+def handle_backup_restore(message):
+    if message.chat.id != ADMIN_CHAT_ID:
+        return
+    if message.document.file_name == DATA_FILE:
+        try:
+            file_info = bot.get_file(message.document.file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(DATA_FILE, "wb") as f:
+                f.write(downloaded_file)
+            bot.reply_to(message, "✅ تم استعادة كافة أرصدة وبيانات المستخدمين بنجاح من ملف النسخة الاحتياطية!")
+        except Exception as e:
+            bot.reply_to(message, f"❌ فشل استعادة الملف: {str(e)}")
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
@@ -124,11 +143,7 @@ def get_message():
 
 @app.route('/shop/<int:user_id>')
 def shop_interface(user_id):
-    try:
-        balance = get_user_balance(user_id)
-    except Exception as e:
-        return f"Database Error: {str(e)}"
-        
+    balance = get_user_balance(user_id)
     try:
         with open("index.html", "r", encoding="utf-8") as f:
             html_content = f.read()
@@ -166,41 +181,27 @@ def api_buy_item():
     if request.method == 'OPTIONS':
         response = jsonify({"success": True})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Accept")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response
 
     try:
         data = request.json
-        if not data:
-            return jsonify({"success": False, "message": "بيانات الطلب فارغة!"})
-            
         user_id = int(data.get("user_id"))
         item_key = data.get("item")
         player_id = data.get("player_id")
         
         item = PRICES.get(item_key)
-        if not item:
-            return jsonify({"success": False, "message": "الباقة المطلوبة غير مدعومة حالياً."})
-            
         balance = get_user_balance(user_id)
         if balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ. يرجى الشحن أولاً بالضغط على زر شحن الحساب في البوت."})
+            return jsonify({"success": False, "message": "عذراً! رصيدك غير كافٍ."})
             
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
-            
-        response = jsonify({"success": True, "message": "تم تسجيل طلبك وجاري شحن اللعبة!"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
-
+        return jsonify({"success": True, "message": "تم تسجيل طلبك!"})
     except Exception as e:
-        response = jsonify({"success": False, "message": f"خطأ داخلي: {str(e)}"})
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/')
 def home():
-    return "Manual Deposit Store is Synchronized with Render Variables!", 200
+    return "Backup Database Mode Online!", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
