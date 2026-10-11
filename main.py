@@ -91,7 +91,7 @@ def show_deposit_details(call):
         f"1️⃣ قم بتحويل قيمة الرصيد المطلوبة بحساب (الدولار المحتسب بـ {USD_TO_SYP} ل.س):\n"
         f"📱 رقم محفظة شام كاش: `{SHAM_CASH_NUMBER}`\n"
         f"👤 اسم صاحب الحساب: **{SHAM_CASH_NAME}**\n\n"
-        f"2️⃣ بعد التحويل, التقط صورة للإيصال وأرسلها مع الـ ID الخاص بك (`{call.from_user.id}`) إلى الدعم الفني فوراً لرفع رصيدك:\n"
+        f"2️⃣ بعد التحويل، التقط صورة للإيصال وأرسلها مع الـ ID الخاص بك (`{call.from_user.id}`) إلى الدعم الفني فوراً لرفع رصيدك:\n"
         f"👤 حساب الإدارة للتفعيل: @{ADMIN_USERNAME}\n\n"
         f"⚙️ يتم التحقق وتأكيد الرصيد يدوياً من الإدارة خلال دقائق قليلة."
     )
@@ -141,33 +141,36 @@ def handle_order_status(call):
     if call.message.chat.id != ADMIN_CHAT_ID:
         return
         
-    parts = call.data.split("_")
-    action = parts[0]
-    user_id = int(parts[1])
-    item_key = parts[2]
-    price = float(parts[3])
-    player_id = "_".join(parts[4:])
-    
-    item_name = PRICES.get(item_key, {}).get("name", "باقة رقمية")
-    
-    if action == "app":
-        bot.edit_message_text(
-            chat_id=ADMIN_CHAT_ID,
-            message_id=call.message.message_id,
-            text=f"🟢 **تم تسليم وشحن الطلب بنجاح** 🟢\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تمت العملية بواسطة الآدمن المعتمد."
-        )
-        bot.send_message(user_id, f"✅ **بشرى سارة! تم شحن طلبك الآن بنجاح** 🎉\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المشحون: `{player_id}`\n\nنشكرك على ثقتك بمتجرنا عبد البصير! 🎮✨")
+    try:
+        parts = call.data.split("_")
+        action = parts[0]
+        user_id = int(parts[1])
+        item_key = parts[2]
+        price = float(parts[3])
+        player_id = "_".join(parts[4:])
         
-    elif action == "rej":
-        update_user_balance(user_id, price)
-        new_balance = get_user_balance(user_id)
+        item_name = PRICES.get(item_key, {}).get("name", "باقة رقمية")
         
-        bot.edit_message_text(
-            chat_id=ADMIN_CHAT_ID,
-            message_id=call.message.message_id,
-            text=f"🔴 **تم رفض الطلب وإرجاع الرصيد** 🔴\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تم الرفض وإعادة `{price} $` لحسابه بنجاح."
-        )
-        bot.send_message(user_id, f"❌ **تنويه: تم رفض طلب الشحن الخاص بك**\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المستهدف: `{player_id}`\n\n💰 **ملاحظة:** تم إلغاء العملية وإرجاع مبلغ `{price} $` إلى رصيدك في البوت تلقائياً.")
+        if action == "app":
+            bot.edit_message_text(
+                chat_id=ADMIN_CHAT_ID,
+                message_id=call.message.message_id,
+                text=f"🟢 **تم تسليم وشحن الطلب بنجاح** 🟢\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تمت العملية بواسطة الآدمن المعتمد."
+            )
+            bot.send_message(user_id, f"✅ **بشرى سارة! تم شحن طلبك الآن بنجاح** 🎉\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المشحون: `{player_id}`\n\nنشكرك على ثقتك بمتجرنا عبد البصير! 🎮✨")
+            
+        elif action == "rej":
+            update_user_balance(user_id, price)
+            new_balance = get_user_balance(user_id)
+            
+            bot.edit_message_text(
+                chat_id=ADMIN_CHAT_ID,
+                message_id=call.message.message_id,
+                text=f"🔴 **تم رفض الطلب وإرجاع الرصيد** 🔴\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تم الرفض وإعادة `{price} $` لحسابه بنجاح."
+            )
+            bot.send_message(user_id, f"❌ **تنويه: تم رفض طلب الشحن الخاص بك**\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المستهدف: `{player_id}`\n\n💰 **ملاحظة:** تم إلغاء العملية وإرجاع مبلغ `{price} $` إلى رصيدك في البوت تلقائياً.")
+    except Exception as e:
+        print(f"Callback error: {str(e)}")
 
 @bot.message_handler(content_types=['document'])
 def handle_backup_restore(message):
@@ -233,9 +236,3 @@ def async_send_order(user_id, item_key, item, player_id):
             f"💰 رصيدك الحالي بعد الخصم المبدئي: {new_balance} $\n\n"
             f"⏳ جاري مراجعة الشحنة وتنفيذها من قِبل الإدارة فوراً وسيصلك إشعار بنجاح العملية هنا."
         )
-        bot.send_message(user_id, user_msg, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Async Order Notification Error: {str(e)}")
-
-@app.route('/api/buy', methods=['POST', 'OPTIONS'])
-def api_buy_item():
