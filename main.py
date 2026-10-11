@@ -3,15 +3,18 @@ from telebot import types
 import sqlite3
 import os
 import threading
-import json
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام من Render ---
+# --- المتغيرات البيئية من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
+
+# --- بيانات الدفع اليدوي عبر شام كاش (تظهر للعملاء) ---
+SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "0900000000") # رقم حسابك في شام كاش
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Your_Telegram_Username") # معرف حسابك الشخصي لاستقبال الإيصالات
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -43,7 +46,7 @@ def get_user_balance(user_id):
         conn.commit()
         balance = 0.0
     else:
-        balance = row[0]  # فك المصفوفة الثنائية فورياً لتمرير القيمة الرقمية النظيفة
+        balance = row[0]
     conn.close()
     return float(balance)
 
@@ -54,16 +57,68 @@ def update_user_balance(user_id, amount):
     conn.commit()
     conn.close()
 
-def get_total_users():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    row = cursor.fetchone()
-    count = row[0] if row else 0
-    conn.close()
-    return count
+# --- لوحة التحكم التفاعلية داخل تيلجرام ---
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    user_id = message.from_user.id
+    balance = get_user_balance(user_id)
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    # زر فتح المتجر الإلكتروني كميني آب
+    web_app_url = f"{RENDER_WEB_URL}/shop/{user_id}"
+    web_app_info = types.WebAppInfo(web_app_url)
+    shop_button = types.InlineKeyboardButton(text="🛒 فتح متجر عبد البصير", web_app=web_app_info)
+    
+    # زر لعرض معلومات الإيداع اليدوي
+    deposit_button = types.InlineKeyboardButton(text="💳 شحن حسابي (شام كاش)", callback_data="deposit_info")
+    
+    markup.add(shop_button, deposit_button)
+    
+    welcome_text = (
+        f"👋 مرحباً بك في متجر عبد البصير للشحن الفوري!\n\n"
+        f"🆔 حسابك: `{user_id}`\n"
+        f"💰 رصيدك الحالي: **{balance} \$**\n\n"
+        f"تصفح المتجر أو اشحن رصيدك يدوياً عبر الخيارات أدناه 👇"
+    )
+    bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
 
-# --- استقبال تحديثات الـ Webhook بنجاح ---
+# التعامل مع ضغط زر الإيداع اليدوي
+@bot.callback_query_handler(func=lambda call: call.data == "deposit_info")
+def show_deposit_details(call):
+    deposit_text = (
+        f"⚠️ **خطوات الشحن اليدوي عبر شام كاش:**\n\n"
+        f"1️⃣ قم بتحويل المبلغ المطلوب إلى حسابنا في شام كاش:\n"
+        f"📱 رقم الحساب: `{SHAM_CASH_NUMBER}`\n\n"
+        f"2️⃣ بعد إتمام التحويل، يرجى إرسال لقطة شاشة للإيصال (صورة التحويل) مع ذكر **الـ ID الخاص بك** (`{call.from_user.id}`) إلى الدعم الفني:\n"
+        f"👤 الإدارة: @{ADMIN_USERNAME}\n\n"
+        f"⚙️ سيقوم المسؤول بمراجعة التحويل وإضافة الرصيد إلى حسابك خلال دقائق!"
+    )
+    bot.send_message(call.from_user.id, deposit_text, parse_mode="Markdown")
+
+# --- ميزة الإدارة: شحن رصيد الزبائن بأمر من التيلجرام مباشرة ---
+# الطريقة: يرسل الآدمن رسالة بهذا الشكل: /deposit 12345678 10 (الآيدي ثم المبلغ)
+@bot.message_handler(commands=['deposit'])
+def manual_admin_deposit(message):
+    if message.chat.id != ADMIN_CHAT_ID:
+        return # تجاهل الأمر إذا لم يكن من الآدمن المعتمد
+        
+    try:
+        args = message.text.split()
+        target_user_id = int(args[1])
+        amount = float(args[2])
+        
+        update_user_balance(target_user_id, amount)
+        new_balance = get_user_balance(target_user_id)
+        
+        # إشعار الآدمن بالنجاح
+        bot.send_message(ADMIN_CHAT_ID, f"✅ تم بنجاح إضافة `{amount} \$` لحساب العميل `{target_user_id}`.\n💰 رصيده الحالي أصبح: {new_balance} \$")
+        
+        # إشعار العميل تلقائياً بقدوم الرصيد
+        bot.send_message(target_user_id, f"🎉 بشرى سارة! تمت الموافقة على دفعتك اليدوية ونزولها في حسابك.\n➕ تم إضافة: {amount} \$\n💰 رصيدك الإجمالي الحالي: **{new_balance} \$**")
+    except Exception as e:
+        bot.send_message(ADMIN_CHAT_ID, f"❌ خطأ في صيغة الأمر. الصيغة الصحيحة:\n`/deposit USER_ID AMOUNT`\nمثال:\n`/deposit 5522345582 10.5`")
+
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
     json_string = request.get_data().decode('utf-8')
@@ -76,7 +131,7 @@ def shop_interface(user_id):
     try:
         balance = get_user_balance(user_id)
     except Exception as e:
-        return f"Error inside database fetching: {str(e)}"
+        return f"Database Error: {str(e)}"
         
     try:
         with open("index.html", "r", encoding="utf-8") as f:
@@ -94,16 +149,19 @@ def async_send_order(user_id, item, player_id):
             f"📥 **وصل طلب مبيعات جديد من التطبيق المصغر** 📥\n\n"
             f"👤 حساب المشتري ID: `{user_id}`\n"
             f"📦 الباقة المطلوبة: **{item['name']}**\n"
-            f"🆔 **ID اللاعب في اللعبة:** `{player_id}`\n\n"
-            f"📌 يرجى الدخول وشحن الباقة فوراً!"
+            f"🆔 **ID اللاعب المستهدف:** `{player_id}`"
         )
-        bot.send_message(ADMIN_CHAT_ID, text=admin_msg)
+        bot.send_message(ADMIN_CHAT_ID, text=admin_msg, parse_mode="Markdown")
         
         update_user_balance(user_id, -item["price"])
         new_balance = get_user_balance(user_id)
         
-        user_msg = f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n🎮 الـ ID المستهدف للشحن: `{player_id}`\n💰 رصيدك المتبقي الحالي: {new_balance} \ pickup\n\n⏳ جاري تسليم الشحنة من قبل الإدارة."
-        bot.send_message(user_id, user_msg)
+        user_msg = (
+            f"🔄 تم خصم {item['price']} \$ وشراء **{item['name']}** بنجاح!\n"
+            f"🎮 الـ ID المشحون: `{player_id}`\n"
+            f"💰 رصيدك المتبقي الحالي: {new_balance} \$"
+        )
+        bot.send_message(user_id, user_msg, parse_mode="Markdown")
     except Exception as e:
         print(f"Async Notification Error: {str(e)}")
 
@@ -131,95 +189,23 @@ def api_buy_item():
             
         balance = get_user_balance(user_id)
         if balance < item["price"]:
-            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ لإتمام العملية."})
+            return jsonify({"success": False, "message": "عذراً! رصيدك الحالي غير كافٍ. يرجى الشحن أولاً بالضغط على زر شحن الحساب في البوت."})
             
         threading.Thread(target=async_send_order, args=(user_id, item, player_id)).start()
             
-        response = jsonify({"success": True})
+        response = jsonify({"success": True, "message": "تم تسجيل طلبك وجاري شحن اللعبة!"})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response
+
     except Exception as e:
-        response = jsonify({"success": False, "message": str(e)})
+        response = jsonify({"success": False, "message": f"خطأ داخلي: {str(e)}"})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        return response
+        return response, 500
 
 @app.route('/')
 def home():
-    return "السيرفر والتطبيق المصغر المستقر والآمن يعملان بنجاح ساحق بنظام Webhook التلقائي!"
+    return "Manual Deposit Store Online!", 200
 
-@bot.message_handler(commands=['pay'])
-def pay_user_balance(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        try:
-            parts = message.text.split()
-            if len(parts) < 3:
-                bot.send_message(message.chat.id, "⚠️ صيغة الأمر خاطئة! يرجى الكتابة بالشكل التالي:\n\n`/pay [ID المستخدم] [المبلغ]`", parse_mode="Markdown")
-                return
-            
-            target_id = int(parts[1]) 
-            amount = float(parts[2])  
-            
-            update_user_balance(target_id, amount)
-            new_balance = get_user_balance(target_id)
-            
-            bot.send_message(message.chat.id, f"✅ تم بنجاح إضافة **{amount} \$** للمستخدم `{target_id}`.\n💰 رصيده الحالي الآن أصبح: **{new_balance} \$**", parse_mode="Markdown")
-            
-            try:
-                bot.send_message(target_id, f"🎉 أخبار رائعة! تم تأكيد إيداعك وإضافة **{amount} \$** لحسابك بنجاح.\n💰 رصيدك الحالي بداخل المتجر أصبح: **{new_balance} \$**", parse_mode="Markdown")
-            except:
-                pass
-        except Exception as e:
-            bot.send_message(message.chat.id, f"❌ حدث خطأ أثناء تنفيذ الأمر. تأكد من صحة الـ ID والمبلغ.")
-
-@bot.message_handler(commands=['admin'])
-def admin_panel(message):
-    user_id = message.from_user.id
-    if user_id == ADMIN_CHAT_ID:
-        total_users = get_total_users()
-        admin_text = (
-            f"👑 **لوحة تحكم الإدارة لمتجر عبد البصير** 👑\n\n"
-            f"👥 إجمالي المستخدمين: `{total_users}` مستخدم.\n\n"
-            f"💡 **لشحن رصيد مستخدم:**\n"
-            f"`/pay [ID المستخدم] [المبلغ]`"
-        )
-        bot.send_message(message.chat.id, admin_text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    balance = get_user_balance(user_id)
-    
-    base_url = RENDER_WEB_URL.strip()
-    while base_url.endswith('/'):
-        base_url = base_url[:-1]
-        
-    web_app_url = f"{base_url}/shop/{user_id}"
-    
-    welcome_text = f"👋 أهلاً بك في متجر عبد البصير للشحن!\n\n💰 رصيدك الحالي: {balance} دولار\n\nاضغط على الزر الشفاف أدناه لفتح واجهة المتجر وتفعيل أزرار الشراء الفورية الحتمية:"
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("🎮 فتح المتجر الإلكتروني", web_app=types.WebAppInfo(url=web_app_url)))
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
-
-@bot.message_handler(content_types=['photo'])
-def process_deposit_receipt(message):
-    user_id = message.from_user.id
-    photo_id = message.photo[-1].file_id
-    bot.send_message(message.chat.id, "⏳ تم استلام صورة الإيصال بنجاح. جاري مراجعتها وتأكيدها من قبل الإدارة الفورية لحسابك.")
-    try:
-        bot.send_photo(ADMIN_CHAT_ID, photo_id, caption=f"📥 وصل إيصال شحن جديد:\n🆔 ID المستخدم لنسخه وشحن حسابه: `{user_id}`\n👤 الاسم: {message.from_user.first_name}\n\nلشحن الرصيد اكتب:\n`/pay {user_id} [المبلغ]`")
-    except Exception as e:
-        print(f"Error: {e}")
-
-if __name__ == "__main__":
-    if BOT_TOKEN != "placeholder_token":
-        bot.remove_webhook()
-        base_url = RENDER_WEB_URL.strip()
-        while base_url.endswith('/'):
-            base_url = base_url[:-1]
-        bot.set_webhook(url=f"{base_url}/{BOT_TOKEN}")
-        print("Webhook integrated smoothly.")
-        
-    port = int(os.environ.get("PORT", 8080))
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
