@@ -3,163 +3,173 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>متجر شحن الألعاب</title>
-  <!-- سكربت تليجرام الرسمي لتفعيل خصائص الـ Web App -->
+  <title>متجر شحن الألعاب الاحترافي</title>
+  <!-- سكربت تليجرام الرسمي للـ Web App -->
   <script src="https://telegram.org"></script>
   <style>
     :root {
-      --bg-color: var(--tg-theme-bg-color, #1c1c1e);
+      --bg-color: var(--tg-theme-bg-color, #17212b);
       --text-color: var(--tg-theme-text-color, #ffffff);
-      --hint-color: var(--tg-theme-hint-color, #eaeaea);
-      --button-color: var(--tg-theme-button-color, #34c759);
+      --hint-color: var(--tg-theme-hint-color, #708499);
+      --button-color: var(--tg-theme-button-color, #2481cc);
       --button-text-color: var(--tg-theme-button-text-color, #ffffff);
-      --secondary-bg: var(--tg-theme-secondary-bg-color, #2c2c2e);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #202b36);
+      --accent-color: #2bb4f6;
     }
     body {
       font-family: system-ui, -apple-system, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-color);
-      padding: 15px;
+      padding: 20px;
       margin: 0;
-      text-align: center;
+      box-sizing: border-box;
     }
+    h2 { font-size: 22px; margin-bottom: 5px; color: var(--button-color); }
+    .subtitle { color: var(--hint-color); font-size: 14px; margin-bottom: 25px; }
     .card {
       background-color: var(--secondary-bg);
       padding: 20px;
-      margin: 15px 0;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      text-align: right;
     }
+    .form-group { margin-bottom: 18px; }
     label {
       display: block;
-      text-align: right;
-      margin-top: 10px;
-      font-weight: bold;
+      margin-bottom: 8px;
+      font-weight: 600;
       font-size: 14px;
+      color: var(--hint-color);
     }
     select, input {
       width: 100%;
-      padding: 12px;
-      margin: 8px 0;
-      border-radius: 8px;
+      padding: 14px;
+      border-radius: 10px;
       border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.04);
       color: var(--text-color);
       font-size: 16px;
       box-sizing: border-box;
+      transition: all 0.3s ease;
     }
-    select option { background: #2c2c2e; color: #fff; }
-    button {
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--button-color);
+      background: rgba(255,255,255,0.08);
+    }
+    select option { background: #202b36; color: #fff; }
+    .btn-submit {
       width: 100%;
-      padding: 14px;
+      padding: 16px;
       margin-top: 15px;
-      border-radius: 8px;
+      border-radius: 12px;
       border: none;
-      background-color: var(--button-color);
+      background: linear-gradient(135deg, var(--button-color), var(--accent-color));
       color: var(--button-text-color);
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
+      box-shadow: 0 4px 15px rgba(36, 129, 204, 0.4);
+      transition: transform 0.2s ease;
     }
+    .btn-submit:active { transform: scale(0.98); }
   </style>
 </head>
 <body>
 
   <h2>🎮 متجر شحن الألعاب السريع</h2>
-  <p style="color: var(--hint-color)">اختر باقة الشحن المفضلة لديك وعش المغامرة</p>
+  <div class="subtitle">شحن فوري ومباشر لجميع ألعابك المفضلة</div>
 
   <div class="card">
-    <label> اختر اللعبة:</label>
-    <select id="game" onchange="updatePackages()">
-      <option value="pubg">ببجي موبايل (PUBG MOBILE)</option>
-      <option value="ff">فري فاير (FREE FIRE)</option>
-    </select>
+    <div class="form-group">
+      <label>🕹️ اختر اللعبة المستهدفة:</label>
+      <select id="game" onchange="updatePackages()">
+        <option value="pubg">ببجي موبايل (PUBG MOBILE)</option>
+        <option value="ff">فري فاير (FREE FIRE)</option>
+      </select>
+    </div>
 
-    <label> اختر الكمية والسعر:</label>
-    <select id="package"></select>
+    <div class="form-group">
+      <label>💎 اختر كمية الشحن والسعر:</label>
+      <select id="package">
+        <!-- سيتم ملؤها تلقائياً وبشكل فوري وثابت عبر السكربت -->
+      </select>
+    </div>
 
-    <label> معرف اللاعب (Player ID):</label>
-    <input type="number" id="playerId" placeholder="اكتب الـ ID الخاص بك هنا" required>
+    <div class="form-group">
+      <label>🆔 معرف اللاعب (Player ID):</label>
+      <input type="number" id="playerId" placeholder="أدخل الـ ID الخاص بك هنا" required>
+    </div>
 
-    <label> وسيلة الدفع اليدوية:</label>
-    <select id="payment">
-      <option value="shamcash">شام كاش (ShamCash)</option>
-      <option value="cwallet">محفظة CWallet (USDT)</option>
-    </select>
+    <div class="form-group">
+      <label>💳 وسيلة التحويل والدفع اليدوية:</label>
+      <select id="payment">
+        <option value="shamcash">شام كاش (ShamCash)</option>
+        <option value="cwallet">محفظة CWallet (USDT-TRC20)</option>
+      </select>
+    </div>
 
-    <button onclick="sendOrder()">تأكيد الطلب والانتقال للدفع 💳</button>
+    <button class="btn-submit" onclick="sendOrder()">تأكيد الطلب والانتقال للدفع ⚡</button>
   </div>
 
   <script>
-    // تهيئة وتوسيع واجهة تليجرام
     const tg = window.Telegram.WebApp;
     tg.ready();
     tg.expand();
 
-    // قائمة البيانات والأسعار المتوافقة مع كود بايثون بدقة
-    const dataConfig = {
-      pubg: {
-        name: 'ببجي موبايل (PUBG)',
-        packages: [
-          { name: '60 شدة - 1 دولار', val: '60 شدة', price: '1' },
-          { name: '325 شدة - 5 دولار', val: '325 شدة', price: '5' },
-          { name: '660 شدة - 10 دولار', val: '660 شدة', price: '10' }
-        ]
-      },
-      ff: {
-        name: 'فري فاير (Free Fire)',
-        packages: [
-          { name: '100 جوهرة - 1 دولار', val: '100 جوهرة', price: '1' },
-          { name: '210 جوهرة - 2 دولار', val: '210 جوهرة', price: '2' },
-          { name: '530 جوهرة - 5 دولار', val: '530 جوهرة', price: '5' }
-        ]
-      }
+    // الباقات الثابتة والمضمونة للظهور فوراً
+    const packagesData = {
+      pubg: [
+        { text: "60 شدة ── 1 دولار", qty: "60 شدة", price: "1" },
+        { text: "325 شدة ── 5 دولار", qty: "325 شدة", price: "5" },
+        { text: "660 شدة ── 10 دولار", qty: "660 شدة", price: "10" }
+      ],
+      ff: [
+        { text: "100 جوهرة ── 1 دولار", qty: "100 جوهرة", price: "1" },
+        { text: "210 جوهرة ── 2 دولار", qty: "210 جوهرة", price: "2" },
+        { text: "530 جوهرة ── 5 دولار", qty: "530 جوهرة", price: "5" }
+      ]
     };
 
     function updatePackages() {
-      const gameKey = document.getElementById('game').value;
-      const packSelect = document.getElementById('package');
-      packSelect.innerHTML = '';
-      
-      dataConfig[gameKey].packages.forEach((p) => {
+      const gameSelect = document.getElementById('game').value;
+      const packageSelect = document.getElementById('package');
+      packageSelect.innerHTML = '';
+
+      packagesData[gameSelect].forEach(p => {
         let opt = document.createElement('option');
-        // دمج الكمية والسعر بعلامة | لكي يقرأها كود بايثون بشكل صحيح
-        opt.value = p.val + "|" + p.price;
-        opt.innerText = p.name;
-        packSelect.appendChild(opt);
+        opt.value = `${p.qty}|${p.price}`;
+        opt.innerText = p.text;
+        packageSelect.appendChild(opt);
       });
     }
 
     function sendOrder() {
-      const gameKey = document.getElementById('game').value;
-      const packageSelect = document.getElementById('package').value;
-      
-      // تفكيك النص والسعر
-      const packageRaw = packageSelect.split('|')[0];
-      const priceRaw = packageSelect.split('|')[1];
-      
+      const gameSelect = document.getElementById('game');
+      const gameName = gameSelect.options[gameSelect.selectedIndex].text;
+      const packageValue = document.getElementById('package').value.split('|');
       const playerId = document.getElementById('playerId').value.trim();
       const payment = document.getElementById('payment').value;
 
       if (!playerId) {
-        alert('من فضلك أدخل معرف اللاعب (Player ID) أولاً!');
+        alert('يرجى كتابة معرف اللاعب الخاص بك أولاً!');
         return;
       }
 
-      // تجهيز كائن البيانات المطابق لما ينتظره كود بايثون
       const orderData = {
-        gameName: dataConfig[gameKey].name,
-        packageName: packageRaw,
-        price: priceRaw,
+        gameName: gameName,
+        packageName: packageValue[0],
+        price: packageValue[1],
         playerId: playerId,
         paymentMethod: payment
       };
 
-      // إرسال البيانات فورياً للبوت وإغلاق الواجهة تلقائياً
+      // إرسال البيانات وإغلاق الواجهة فوراً
       tg.sendData(JSON.stringify(orderData));
     }
 
-    // تشغيل الدالة تلقائياً عند فتح الصفحة لعرض باقات اللعبة الأولى فوراً
+    // تشغيل الدالة فوراً عند فتح الصفحة للتأكد من تعبئة الجدول الأول
     updatePackages();
   </script>
 </body>
