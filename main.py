@@ -1,6 +1,6 @@
 import telebot
 from telebot import types
-import psycopg2  
+import sqlite3  
 import os
 import threading
 import json
@@ -9,16 +9,15 @@ from flask import Flask, render_template_string, request, jsonify
 
 app = Flask('')
 
-# --- جلب المتغيرات السرية بأمان تام من Render ---
+# --- جلب المتغيرات السرية بأمان من Render ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "placeholder_token")
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
 RENDER_WEB_URL = os.environ.get("RENDER_WEB_URL", "https://onrender.com")
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# 💳 بيانات محفظة شام كاش الخاصة بك استقبال الأموال
-SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  # ضع رقم حسابك هنا
-SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "اسم صاحب الحساب") # اسم الحساب الثنائي أو الثلاثي
-USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) # سعر صرف الدولار مقابل الليرة السورية داخل البوت
+# 💳 بيانات محفظة شام كاش الخاصة بك (يمكن وضعها هنا مباشرة أو في Render)
+SHAM_CASH_NUMBER = os.environ.get("SHAM_CASH_NUMBER", "09XXXXXXXX")  
+SHAM_CASH_NAME = os.environ.get("SHAM_CASH_NAME", "اسم صاحب الحساب") 
+USD_TO_SYP = float(os.environ.get("USD_TO_SYP", "15000")) 
 
 bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
@@ -29,37 +28,39 @@ PRICES = {
     "ff_310": {"name": "310 جوهرة Free Fire", "price": 3.0}
 }
 
+DB_FILE = "database.db"
+
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, balance REAL DEFAULT 0.0)')
+        cursor.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)')
         conn.commit()
-        cursor.close()
         conn.close()
-        print("✅ SUCCESS: Connected to Database!")
+        print("✅ SUCCESS: SQLite Database Initialized Successfully!")
     except Exception as e:
         print(f"❌ DATABASE ERROR: {str(e)}")
 
-if DATABASE_URL:
-    init_db()
+# تشغيل قاعدة البيانات المحلية فوراً وبدون خوادم خارجية
+init_db()
 
 def get_user_balance(user_id):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
         if row is None:
-            cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
+            cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, 0.0)", (user_id,))
             conn.commit()
             balance = 0.0
         else:
-            balance = row[0]
-        cursor.close()
+            balance = row['balance']
         conn.close()
         return float(balance)
     except Exception as e:
@@ -70,13 +71,12 @@ def update_user_balance(user_id, amount):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT balance FROM users WHERE user_id = %s", (user_id,))
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
         if cursor.fetchone() is None:
-            cursor.execute("INSERT INTO users (user_id, balance) VALUES (%s, 0.0)", (user_id,))
+            cursor.execute("INSERT INTO users (user_id, balance) VALUES (?, 0.0)", (user_id,))
             conn.commit()
-        cursor.execute("UPDATE users SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
+        cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
         conn.commit()
-        cursor.close()
         conn.close()
         return True
     except Exception as e:
@@ -85,7 +85,7 @@ def update_user_balance(user_id, amount):
 
 @app.route('/')
 def home():
-    return "🚀 سيرفر متجر عبد البصير يعمل بنجاح بنظام إيداع شام كاش اليدوي!", 200
+    return "🚀 متجر عبد البصير يعمل بنجاح تام وبأعلى استقرار عبر خادم SQLite المحلي!", 200
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def get_message():
@@ -157,7 +157,6 @@ def api_buy_item():
     except Exception as e:
         return jsonify({"success": False, "message": f"حدث خطأ في النظام: {str(e)}"})
 
-# --- معالجة أمر بدء التشغيل والترحيب (/start) ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -183,7 +182,6 @@ def send_welcome(message):
     except Exception as e:
         print(f"Error in start command: {str(e)}")
 
-# --- التعامل مع ضغطة زر شحن الرصيد من قبل العميل ---
 @bot.callback_query_handler(func=lambda call: call.data == "sham_cash_deposit")
 def process_deposit_click(call):
     try:
@@ -197,21 +195,17 @@ def process_deposit_click(call):
             f"💵 **1 دولار متجر = {int(USD_TO_SYP):,} ليرة سورية**\n\n"
             f"3️⃣ بعد إتمام التحويل الناجح من تطبيقك، يرجى **إرسال رقم العملية (المرجع) في رسالة نصية مباشرة للبوت هنا**، أو إرسال صورة واضحة لإيصال التحويل لإتمام تأكيد طلبك."
         )
-        # فتح مرحلة انتظار استقبال إشعار الشحن من العميل
         msg = bot.send_message(user_id, text=deposit_instruction, parse_mode="Markdown")
         bot.register_next_step_handler(msg, process_receipt_submission)
     except Exception as e:
         print(f"Error in deposit callback: {str(e)}")
 
-# دالة استقبال إثبات التحويل المالي من العميل وإرساله للآدمن
 def process_receipt_submission(message):
     try:
         user_id = message.chat.id
         user_name = message.from_user.first_name
         
         admin_markup = types.InlineKeyboardMarkup()
-        # زر مدمج للموافقة الفورية من قبل الآدمن وإضافة الرصيد يدويًا
-        # سيقوم الأمر بتهيئة نص جاهز لتسريع عملية الشحن
         approve_button = types.InlineKeyboardButton(text="✅ موافقة وشحن الحساب", callback_data=f"admin_approve_prompt_{user_id}")
         admin_markup.add(approve_button)
 
@@ -236,7 +230,6 @@ def process_receipt_submission(message):
     except Exception as e:
         print(f"Error in process_receipt: {str(e)}")
 
-# معالجة تفاعل الآدمن مع طلبات الشحن
 @bot.callback_query_handler(func=lambda call: call.data.startswith("admin_approve_prompt_"))
 def admin_prompt_amount(call):
     if call.message.chat.id != ADMIN_CHAT_ID:
@@ -246,5 +239,3 @@ def admin_prompt_amount(call):
         msg = bot.send_message(ADMIN_CHAT_ID, f"يرجى كتابة القيمة المراد إضافتها لحساب المستخدم `{target_user_id}` **بالدولار** مباشرة (مثال: 5 أو 1.5):")
         bot.register_next_step_handler(msg, lambda m: execute_admin_deposit(m, target_user_id))
     except Exception as e:
-        print(f"Error in admin prompt: {str(e)}")
-
