@@ -96,22 +96,22 @@
     tg.ready();
     tg.expand();
 
-    // قائمة البيانات والأسعار المخزنة داخل الواجهة
+    // قائمة البيانات والأسعار المتوافقة مع كود بايثون بدقة
     const dataConfig = {
       pubg: {
         name: 'ببجي موبايل (PUBG)',
         packages: [
-          { name: '60 شدة - \$1.0', val: '60 شدة', price: '1.0' },
-          { name: '325 شدة - \$5.0', val: '325 شدة', price: '5.0' },
-          { name: '660 شدة - \$10.0', val: '660 شدة', price: '10.0' }
+          { name: '60 شدة - 1 دولار', val: '60 شدة', price: '1' },
+          { name: '325 شدة - 5 دولار', val: '325 شدة', price: '5' },
+          { name: '660 شدة - 10 دولار', val: '660 شدة', price: '10' }
         ]
       },
       ff: {
         name: 'فري فاير (Free Fire)',
         packages: [
-          { name: '100 جوهرة - \$1.0', val: '100 جوهرة', price: '1.0' },
-          { name: '210 جوهرة - \$2.0', val: '210 جوهرة', price: '2.0' },
-          { name: '530 جوهرة - \$5.0', val: '530 جوهرة', price: '5.0' }
+          { name: '100 جوهرة - 1 دولار', val: '100 جوهرة', price: '1' },
+          { name: '210 جوهرة - 2 دولار', val: '210 جوهرة', price: '2' },
+          { name: '530 جوهرة - 5 دولار', val: '530 جوهرة', price: '5' }
         ]
       }
     };
@@ -121,10 +121,10 @@
       const packSelect = document.getElementById('package');
       packSelect.innerHTML = '';
       
-      dataConfig[gameKey].packages.forEach((p, index) => {
+      dataConfig[gameKey].packages.forEach((p) => {
         let opt = document.createElement('option');
-        // نضع القيمة المخفية كـ نص مدمج يحتوي على الكمية والسعر مفصولين بـ | لسهولة معالجتها في البوت
-        opt.value = `${p.val}|${p.price}`;
+        // دمج الكمية والسعر بعلامة | لكي يقرأها كود بايثون بشكل صحيح
+        opt.value = p.val + "|" + p.price;
         opt.innerText = p.name;
         packSelect.appendChild(opt);
       });
@@ -132,7 +132,12 @@
 
     function sendOrder() {
       const gameKey = document.getElementById('game').value;
-      const packageRaw = document.getElementById('package').value.split('|');
+      const packageSelect = document.getElementById('package').value;
+      
+      // تفكيك النص والسعر
+      const packageRaw = packageSelect.split('|')[0];
+      const priceRaw = packageSelect.split('|')[1];
+      
       const playerId = document.getElementById('playerId').value.trim();
       const payment = document.getElementById('payment').value;
 
@@ -141,20 +146,20 @@
         return;
       }
 
-      // تجهيز كائن البيانات لإرساله للبوت
+      // تجهيز كائن البيانات المطابق لما ينتظره كود بايثون
       const orderData = {
         gameName: dataConfig[gameKey].name,
-        packageName: packageRaw[0],
-        price: packageRaw[1],
+        packageName: packageRaw,
+        price: priceRaw,
         playerId: playerId,
         paymentMethod: payment
       };
 
-      // إرسال البيانات المحددة فورياً للبوت وإغلاق نافذة الويب تلقائياً
+      // إرسال البيانات فورياً للبوت وإغلاق الواجهة تلقائياً
       tg.sendData(JSON.stringify(orderData));
     }
 
-    // تشغيل الدالة تلقائياً عند فتح الصفحة لعرض حزم اللعبة الأولى
+    // تشغيل الدالة تلقائياً عند فتح الصفحة لعرض باقات اللعبة الأولى فوراً
     updatePackages();
   </script>
 </body>
