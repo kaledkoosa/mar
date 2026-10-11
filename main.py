@@ -79,7 +79,7 @@ def send_welcome(message):
     welcome_text = (
         f"👋 مرحباً بك في متجر عبد البصير للشحن الفوري!\n\n"
         f"🆔 حسابك: `{user_id}`\n"
-        f"💰 رصيدك الحالي: **{balance} $**\n\n"
+        f"💰 رصيدك الحالي: **{balance} \$**\n\n"
         f"اضغط على الخيارات أدناه لتصفح المتجر أو تعبئة رصيدك يدويّاً 👇"
     )
     bot.send_message(user_id, welcome_text, reply_markup=markup, parse_mode="Markdown")
@@ -131,108 +131,9 @@ def manual_admin_deposit(message):
         new_balance = get_user_balance(target_user_id)
         
         bot.send_message(ADMIN_CHAT_ID, f"✅ **عملية ناجحة**\n\n👤 العميل: `{target_user_id}`\n➕ تم إضافة: `{amount} $`\n💰 الرصيد الحالي: `{new_balance} $`", parse_mode="Markdown")
-        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} $\n💰 رصيدك الإجمالي الحالي: **{new_balance} $**")
-    except:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ الصيغة الصحيحة: `/pay USER_ID AMOUNT`", parse_mode="Markdown")
-
-# --- نظام معالجة أزرار القبول والرفض للآدمن ---
-@bot.callback_query_handler(func=lambda call: call.data.startswith(("app_", "rej_")))
-def handle_order_status(call):
-    if call.message.chat.id != ADMIN_CHAT_ID:
-        return
+        bot.send_message(target_user_id, f"🎉 تم تأكيد دفعتك اليدوية ونزولها في حسابك بنجاح!\n➕ الرصيد المضاف: {amount} \(\n💰 رصيدك الإجمالي الحالي: {new_balance} \)", parse_mode="Markdown")
         
-    try:
-        parts = call.data.split("_")
-        action = parts[0]
-        user_id = int(parts[1])
-        item_key = parts[2]
-        price = float(parts[3])
-        player_id = "_".join(parts[4:])
-        
-        item_name = PRICES.get(item_key, {}).get("name", "باقة رقمية")
-        
-        if action == "app":
-            bot.edit_message_text(
-                chat_id=ADMIN_CHAT_ID,
-                message_id=call.message.message_id,
-                text=f"🟢 **تم تسليم وشحن الطلب بنجاح** 🟢\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تمت العملية بواسطة الآدمن المعتمد."
-            )
-            bot.send_message(user_id, f"✅ **بشرى سارة! تم شحن طلبك الآن بنجاح** 🎉\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المشحون: `{player_id}`\n\nنشكرك على ثقتك بمتجرنا عبد البصير! 🎮✨")
-            
-        elif action == "rej":
-            update_user_balance(user_id, price)
-            new_balance = get_user_balance(user_id)
-            
-            bot.edit_message_text(
-                chat_id=ADMIN_CHAT_ID,
-                message_id=call.message.message_id,
-                text=f"🔴 **تم رفض الطلب وإرجاع الرصيد** 🔴\n\n👤 المشتري ID: `{user_id}`\n📦 الباقة: **{item_name}**\n🆔 معرف اللاعب: `{player_id}`\n\n⚙️ تم الرفض وإعادة `{price} $` لحسابه بنجاح."
-            )
-            bot.send_message(user_id, f"❌ **تنويه: تم رفض طلب الشحن الخاص بك**\n\n📦 الباقة: **{item_name}**\n🎮 الـ ID المستهدف: `{player_id}`\n\n💰 **ملاحظة:** تم إلغاء العملية وإرجاع مبلغ `{price} $` إلى رصيدك في البوت تلقائياً.")
+    except ValueError:
+        bot.send_message(ADMIN_CHAT_ID, "⚠️ **خطأ في الصيغة المستخدمة!**\n\nيرجى استخدام الصيغة الصحيحة تماماً:\n`/pay USER_ID AMOUNT`", parse_mode="Markdown")
     except Exception as e:
-        print(f"Callback error: {str(e)}")
-
-@bot.message_handler(content_types=['document'])
-def handle_backup_restore(message):
-    if message.chat.id != ADMIN_CHAT_ID:
-        return
-    if message.document.file_name == DATA_FILE:
-        try:
-            file_info = bot.get_file(message.document.file_id)
-            downloaded_file = bot.download_file(file_info.file_path)
-            with open(DATA_FILE, "wb") as f:
-                f.write(downloaded_file)
-            bot.reply_to(message, "✅ تم استعادة كافة أرصدة المستخدمين بنجاح!")
-        except Exception as e:
-            bot.reply_to(message, f"❌ فشل: {str(e)}")
-
-# --- ربط واجهات الويب والـ API للتطبيق المصغر ---
-@app.route('/' + BOT_TOKEN, methods=['POST'])
-def get_message():
-    json_string = request.get_data().decode('utf-8')
-    update = telebot.types.Update.de_json(json_string)
-    bot.process_new_updates([update])
-    return "OK", 200
-
-@app.route('/shop/<int:user_id>')
-def shop_interface(user_id):
-    balance = get_user_balance(user_id)
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-    except:
-        return "Error: index.html not found."
-    
-    html_content = html_content.replace("USER_BALANCE_MARKER", str(balance))
-    html_content = html_content.replace("USER_ID_MARKER", str(user_id))
-    return render_template_string(html_content)
-
-def async_send_order(user_id, item_key, item, player_id):
-    try:
-        update_user_balance(user_id, -item["price"])
-        new_balance = get_user_balance(user_id)
-        
-        callback_approve = f"app_{user_id}_{item_key}_{item['price']}_{player_id}"
-        callback_reject = f"rej_{user_id}_{item_key}_{item['price']}_{player_id}"
-        
-        markup = types.InlineKeyboardMarkup()
-        btn_approve = types.InlineKeyboardButton(text="✅ قبول وتأكيد الشحن", callback_data=callback_approve)
-        btn_reject = types.InlineKeyboardButton(text="❌ رفض الطلب وإرجاع المال", callback_data=callback_reject)
-        markup.add(btn_approve, btn_reject)
-        
-        admin_msg = (
-            f"📥 **وصل طلب مبيعات جديد من المتجر المصغر** 📥\n\n"
-            f"👤 حساب المشتري ID: `{user_id}`\n"
-            f"📦 الباقة المطلوبة: **{item['name']}**\n"
-            f"🆔 **ID اللاعب في اللعبة:** `{player_id}`\n\n"
-            f"📌 يرجى شحن الـ ID يدوياً داخل اللعبة ثم الضغط على زر التحكم المناسب أدناه لتنبيه الزبون آلياً:"
-        )
-        bot.send_message(ADMIN_CHAT_ID, text=admin_msg, reply_markup=markup, parse_mode="Markdown")
-        
-        user_msg = (
-            f"🔄 **تم استلام طلبك وبانتظار المراجعة**\n\n"
-            f"📦 الباقة: **{item['name']}**\n"
-            f"🎮 الـ ID المطلوب شحنه: `{player_id}`\n"
-            f"💰 رصيدك الحالي بعد الخصم المبدئي: {new_balance} $\n\n"
-            f"⏳ جاري مراجعة الشحنة وتنفيذها من قِبل الإدارة فوراً وسيصلك إشعار بنجاح العملية هنا."
-        )
+        bot.send_message(ADMIN_CHAT_ID, f"❌ حدث خطأ غير متوقع أثناء المعالجة:\n`{str(e)}`", parse_mode="Markdown")
