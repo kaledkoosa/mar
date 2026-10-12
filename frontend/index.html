@@ -93,7 +93,6 @@
     <div class="form-group">
       <label>💎 اختر كمية الشحن والسعر:</label>
       <select id="package">
-        <!-- تم وضع الباقات ثابتة وجاهزة للمرة الأولى لتفادي مشكلة الاختفاء نهائياً -->
         <option value="60 شدة|1">60 شدة ── 1 دولار</option>
         <option value="325 شدة|5">325 شدة ── 5 دولار</option>
         <option value="660 شدة|10">660 شدة ── 10 دولار</option>
@@ -121,7 +120,6 @@
     tg.ready();
     tg.expand();
 
-    // دالة التغيير المباشر والمضمونة للتبديل بين اللعبتين بسلاسة
     function updatePackagesDirectly() {
       const gameSelect = document.getElementById('game').value;
       const packageSelect = document.getElementById('package');
@@ -146,13 +144,9 @@
       const gameSelect = document.getElementById('game');
       const gameName = gameSelect.options[gameSelect.selectedIndex].text;
       const packageSelect = document.getElementById('package').value;
-      
-      // تفكيك القيم المحددة بدقة لبايثون
-      const packageRaw = packageSelect.split('|')[0];
-      const priceRaw = packageSelect.split('|')[1];
-      
       const playerId = document.getElementById('playerId').value.trim();
-      const payment = document.getElementById('payment').value;
+      const paymentSelect = document.getElementById('payment');
+      const paymentMethod = paymentSelect.options[paymentSelect.selectedIndex].value;
 
       if (!playerId) {
         alert('يرجى كتابة معرف اللاعب الخاص بك أولاً!');
@@ -160,14 +154,14 @@
       }
 
       const orderData = {
-        gameName: gameName,
-        packageName: packageRaw,
-        price: priceRaw,
-        playerId: playerId,
-        paymentMethod: payment
+        gameName: String(gameName),
+        packageName: String(packageSelect),
+        price: String(packageSelect),
+        playerId: String(playerId),
+        paymentMethod: String(paymentMethod)
       };
 
-      // إرسال البيانات المحددة للبوت وإغلاق الواجهة
+      // إرسال البيانات وإغلاق الواجهة فوراً
       tg.sendData(JSON.stringify(orderData));
     }
   </script>
