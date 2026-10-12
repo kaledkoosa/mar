@@ -4,7 +4,7 @@ import random
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -20,7 +20,7 @@ SHAM_CASH_NUM = os.getenv("SHAM_CASH_NUM", "[09xxxxxxxx]")
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 app = FastAPI()
 
-# تهيئة سوبابيس
+# تهيئة سوبابيس المستقرة
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 user_sessions = {}
@@ -39,7 +39,7 @@ async def process_webhook(request: Request):
     bot.process_new_updates([update])
     return {"status": "ok"}
 
-# أمر /start
+# أمر /start المحدث بأزرار مدمجة شفافة لتجاوز قيد تليجرام لـ sendData
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
@@ -57,13 +57,14 @@ def send_welcome(message):
     cache_buster = random.randint(1000, 9999)
     webapp_url = f"{RENDER_URL}/frontend/index.html?v={cache_buster}"
     
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    # إنشاء زر مدمج شفاف (Inline Keyboard) متوافق إلزامياً مع واجهات الويب
+    markup = InlineKeyboardMarkup()
     web_app_info = telebot.types.WebAppInfo(url=webapp_url)
-    markup.add(KeyboardButton(text="🎮 فتح المتجر الإلكتروني", web_app=web_app_info))
+    markup.add(InlineKeyboardButton(text="🎮 فتح المتجر الإلكتروني ⚡", web_app=web_app_info))
 
-    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب الإلكترونية الاحترافي!\n\nاضغط على الزر بالأسفل لفتح المتجر واختيار باقاتك المفضلة:", reply_markup=markup)
+    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب الإلكترونية الاحترافي!\n\nاضغط على الزر الشفاف بالأسفل لفتح المتجر واختيار باقاتك المفضلة وتأكيد طلبك فورا:", reply_markup=markup)
 
-# إضافة أمر /admin يدوي لعرض الطلبات المعلقة للأدمن
+# أمر /admin لعرض الطلبات المعلقة للأدمن
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if str(message.from_user.id) != str(ADMIN_ID):
@@ -78,7 +79,7 @@ def admin_panel(message):
             bot.reply_to(message, "🎉 لا توجد أي طلبات معلقة بانتظار المراجعة حالياً!")
             return
             
-        bot.reply_to(message, f"📋 يوجد حالياً مجموع ({len(orders)}) طلبات بانتظار المراجعة والتفعيل. تفقد رسائل الدفع الواردة للتحكم بها.")
+        bot.reply_to(message, f"📋 يوجد حالياً مجموع ({len(orders)}) طلبات بانتظار المراجعة والتفعيل.")
     except Exception as e:
         bot.reply_to(message, f"❌ حدث خطأ أثناء جلب البيانات: {e}")
 
@@ -90,8 +91,8 @@ def handle_webapp_data(message):
         data = json.loads(message.web_app_data.data)
 
         # تفكيك الباقة والسعر بدقة بعد التعديل الثابت
-        package_info = data["packageName"][0] if isinstance(data["packageName"], list) else data["packageName"]
-        price_info = data["price"][1] if isinstance(data["price"], list) else data["price"]
+        package_info = data["packageName"] if isinstance(data["packageName"], list) else data["packageName"]
+        price_info = data["price"] if isinstance(data["price"], list) else data["price"]
 
         if "|" in package_info:
             qty, prc = package_info.split("|")
@@ -158,7 +159,7 @@ def process_and_send_to_admin(message, user_id, session):
             "status": "بانتظار المراجعة"
         }).execute()
 
-        order_data = response.data[0] if isinstance(response.data, list) else response.data
+        order_data = response.data if isinstance(response.data, list) else response.data
         bot.reply_to(message, "✅ شكراً لك! تم إرسال طلب الشحن وإثبات الدفع بنجاح. سيقوم الدعم بمراجعة عملية التحويل وتفعيل طلبك فوراً.")
 
         admin_msg = (
@@ -196,9 +197,9 @@ def handle_admin_actions(call):
         return
 
     data_parts = call.data.split('_')
-    action = data_parts[1]
-    order_id = data_parts[2]
-    client_id = data_parts[3]
+    action = data_parts
+    order_id = data_parts
+    client_id = data_parts
 
     if action == "ok":
         supabase.table("orders").update({"status": "مكتمل"}).eq("id", order_id).execute()
