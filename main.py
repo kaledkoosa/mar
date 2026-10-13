@@ -17,6 +17,9 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 SHAM_CASH_NUM = os.getenv("SHAM_CASH_NUM", "[09xxxxxxxx]")
 
+# قراءة معرف الحساب لـ CWallet كمتغير بيئي آمن من موقع Render
+CWALLET_ACCOUNT_ID = os.getenv("CWALLET_ID", "[رقم المعرف غير مضاف]")
+
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")
 app = FastAPI()
 
@@ -25,12 +28,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 payment_details = {
     "shamcash": {"name": "شام كاش (ShamCash)", "msg": f"يرجى التحويل إلى حساب شام كاش رقم: `{SHAM_CASH_NUM}`"},
-    "cwallet": {"name": "محفظة CWallet (يدوي)", "msg": "يرجى التحويل إلى عنوان USDT (TRC20):\n`TYxxxxxxxxxxxxxxxxxxxxxxxx`"}
+    "cwallet": {"name": "محفظة CWallet (يدوي)", "msg": f"💡 *توفير الرسوم:* يرجى التحويل الداخلي المجاني (0 رسوم) داخل تطبيق CWallet إلى المعرف الخاص بنا:\n\n👉 معرف الحساب (CWallet ID): `{CWALLET_ACCOUNT_ID}`"}
 }
 
 app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
-# نظام متطور ومحمي لإبقاء السيرفر مستيقظاً ونشطاً عبر طلب داخلي ذاتي (Keep-Alive)
 @app.get("/ping")
 def ping_server():
     return {"status": "alive", "msg": "إشعار نشاط تلقائي لمنع النوم"}
@@ -42,20 +44,17 @@ async def process_webhook(request: Request):
     bot.process_new_updates([update])
     return {"status": "ok"}
 
-# أمر /start المطور لحفظ المستخدمين وتفعيل نظام السيرفر الدائم
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
 
     try:
-        # تسجيل أو تحديث المستخدم سحابياً بشكل فوري لمنع التعليق
         supabase.table("users").upsert({
             "user_id": user_id,
             "username": message.from_user.username or "N/A",
             "full_name": message.from_user.first_name or "N/A"
         }).execute()
         
-        # تصفير أي جلسة معلقة سحابياً داخل Supabase للحساب لضمان جاهزيته
         supabase.table("orders").delete().eq("user_id", user_id).eq("status", "مسودة").execute()
     except Exception as e:
         print(f"Supabase Error: {e}")
@@ -69,7 +68,6 @@ def send_welcome(message):
 
     bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب الإلكترونية الاحترافي المستقر!\n\nاضغط على الزر بالأسفل لفتح المتجر المباشر وتأكيد طلبك فورا وسيتجاوب معك السيرفر في أي وقت:", reply_markup=markup)
 
-# أمر /admin لعرض إحصائيات سريعة من قاعدة البيانات مباشرة
 @bot.message_handler(commands=['admin'])
 def admin_panel(message):
     if str(message.from_user.id) != str(ADMIN_ID):
@@ -83,7 +81,6 @@ def admin_panel(message):
     except Exception as e:
         bot.reply_to(message, f"❌ حدث خطأ سحابي: {e}")
 
-# قراءة البيانات ومعالجتها وحفظها بشكل فوري ومستقر في قاعدة البيانات لمنع فقدان البيانات عند نوم السيرفر
 @bot.message_handler(content_types=['web_app_data'])
 def handle_webapp_data(message):
     try:
@@ -93,12 +90,11 @@ def handle_webapp_data(message):
         package_info = data["packageName"] if isinstance(data["packageName"], list) else data["packageName"]
         price_info = data["price"] if isinstance(data["price"], list) else data["price"]
 
-        qty = package_info.split("|")[0] if "|" in package_info else package_info
-        prc = package_info.split("|")[1] if "|" in package_info else price_info
+        qty = package_info.split("|") if "|" in package_info else package_info
+        prc = package_info.split("|") if "|" in package_info else price_info
 
         method_title = payment_details[data["paymentMethod"]]["name"]
 
-        # حفظ الطلب كـ "مسودة سحابية آمنة" فوراً داخل Supabase بدلاً من حفظه في ذاكرة السيرفر
         supabase.table("orders").insert({
             "user_id": user_id,
             "game": data["gameName"],
@@ -118,40 +114,37 @@ def handle_webapp_data(message):
             f"🆔 معرف اللاعب (Player ID): `{data['playerId']}`\n"
             f"💰 الإجمالي المطلوب: {prc} دولار\n\n"
             f"-------------------------\n"
-            f"⚙️ *تعليمات الدفع اليدوي المحمي عبر ({selected_pay['name']}):*\n"
+            f"⚙️ *بيانات التحويل عبر ({selected_pay['name']}):*\n"
             f"{selected_pay['msg']}\n\n"
-            f"📥 *خطوة أخيرة وحاسمة:* يرجى إتمام عملية التحويل، ثم إرسال صورة إيصال التحويل (إشعار) أو كتابة رقم العملية هنا مباشرة لتأكيد الدفع:"
+            f"📥 *خطوة أخيرة وحاسمة:* يرجى إتمام عملية التحويل (بدون رسوم)، ثم إرسال صورة إيصال التحويل (إشعار) أو كتابة رقم العملية هنا مباشرة لتأكيد الدفع:"
         )
     except Exception as e:
         print(f"WebApp Data Error: {e}")
         bot.reply_to(message, "❌ حدث خطأ غير متوقع، يرجى إعادة محاولة فتح المتجر.")
 
-# قراءة إثبات الدفع وتحديث المسودة السحابية إلى طلب حقيقي وتنبيه الأدمن فوراً
 @bot.message_handler(content_types=['photo', 'text'])
 def handle_payment_proof(message):
     user_id = str(message.from_user.id)
     
     try:
-        # جلب أحدث مسودة طلب للمستخدم من قاعدة البيانات مباشرة للتأكد من استقرار الجلسة
         response = supabase.table("orders").select("*").eq("user_id", user_id).eq("status", "مسودة").order("created_at", desc=True).limit(1).execute()
         orders = response.data
         
         if not orders:
-            return # لا توجد مسودة معلقة لهذا المستخدم
+            return
 
-        order_data = orders[0]
+        order_data = orders
         
         proof_photo = message.photo[-1].file_id if message.content_type == 'photo' else None
         proof_text = message.caption or "تم إرفاق صورة إشعار التحويل" if message.content_type == 'photo' else message.text
 
-        # تحديث الطلب سحابياً وتغيير حالته إلى "بانتظار المراجعة"
         update_res = supabase.table("orders").update({
             "proof_text": proof_text,
             "proof_photo": proof_photo,
             "status": "بانتظار المراجعة"
         }).eq("id", order_data["id"]).execute()
         
-        final_order = update_res.data[0]
+        final_order = update_res.data
 
         bot.reply_to(message, "✅ شكراً لك! تم تثبيت إثبات الدفع سحابياً وإرسال طلبك للإدارة بنجاح. سيتم مراجعة حسابنا وشحن حسابك وتنبيهك فوراً.")
 
@@ -187,9 +180,9 @@ def handle_admin_actions(call):
         return
 
     data_parts = call.data.split('_')
-    action = data_parts[1]
-    order_id = data_parts[2]
-    client_id = data_parts[3]
+    action = data_parts
+    order_id = data_parts
+    client_id = data_parts
 
     if action == "ok":
         supabase.table("orders").update({"status": "مكتمل"}).eq("id", order_id).execute()
