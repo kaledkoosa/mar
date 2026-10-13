@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>متجر شحن الألعاب الاحترافي</title>
-  <!-- سكربت تليجرام الرسمي للـ Web App -->
   <script src="https://telegram.org"></script>
   <style>
     :root {
@@ -51,14 +50,7 @@
       color: var(--text-color);
       font-size: 16px;
       box-sizing: border-box;
-      transition: all 0.3s ease;
     }
-    select:focus, input:focus {
-      outline: none;
-      border-color: var(--button-color);
-      background: rgba(255,255,255,0.08);
-    }
-    select option { background: #202b36; color: #fff; }
     .btn-submit {
       width: 100%;
       padding: 16px;
@@ -71,9 +63,7 @@
       font-weight: bold;
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(36, 129, 204, 0.4);
-      transition: transform 0.2s ease;
     }
-    .btn-submit:active { transform: scale(0.98); }
   </style>
 </head>
 <body>
@@ -101,7 +91,7 @@
 
     <div class="form-group">
       <label>🆔 معرف اللاعب (Player ID):</label>
-      <input type="number" id="playerId" placeholder="أدخل الـ ID الخاص بك هنا" required>
+      <input type="text" id="playerId" placeholder="أدخل الـ ID الخاص بك هنا">
     </div>
 
     <div class="form-group">
@@ -143,25 +133,32 @@
     function sendOrder() {
       const gameSelect = document.getElementById('game');
       const gameName = gameSelect.options[gameSelect.selectedIndex].text;
+      
       const packageSelect = document.getElementById('package').value;
-      const playerId = document.getElementById('playerId').value.trim();
-      const paymentSelect = document.getElementById('payment');
-      const paymentMethod = paymentSelect.options[paymentSelect.selectedIndex].value;
-
+      // تفكيك النص والسعر بشكل آمن وصحيح بدون تكرار يسبب تعليق المتصفح
+      const packageParts = packageSelect.split('|');
+      const qty = packageParts[0];
+      const prc = packageParts[1];
+      
+      let playerId = document.getElementById('playerId').value.trim();
       if (!playerId) {
-        alert('يرجى كتابة معرف اللاعب الخاص بك أولاً!');
+        alert('يرجى كتابة معرف اللاعب (Player ID) الخاص بك!');
         return;
       }
 
+      const paymentSelect = document.getElementById('payment');
+      const paymentMethod = paymentSelect.options[paymentSelect.selectedIndex].value;
+
+      // صياغة البيانات بشكل نصوص صافية وبسيطة جداً
       const orderData = {
         gameName: String(gameName),
-        packageName: String(packageSelect),
-        price: String(packageSelect),
+        packageName: String(qty),
+        price: String(prc),
         playerId: String(playerId),
         paymentMethod: String(paymentMethod)
       };
 
-      // إرسال البيانات وإغلاق الواجهة فوراً
+      // إرسال البيانات المحددة وإغلاق الواجهة فوراً
       tg.sendData(JSON.stringify(orderData));
     }
   </script>
