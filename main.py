@@ -113,7 +113,7 @@ def handle_package_selection(call):
 @bot.message_handler(func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_ID")
 def handle_player_id(message):
     user_id = str(message.from_user.id)
-    player_id = message.text.trim() if hasattr(message.text, 'trim') else message.text.strip()
+    player_id = message.text.strip()
     
     user_sessions[user_id]["player_id"] = player_id
     user_sessions[user_id]["step"] = "WAITING_PAYMENT"
@@ -139,9 +139,9 @@ def handle_payment_selection(call):
     user_sessions[user_id]["payment_method"] = pay_key
     user_sessions[user_id]["step"] = "WAITING_PROOF"
     
-    # حفظ مسودة سحابية أولية في Supabase لتأمين الطلب
     try:
-        supabase.table("orders").insert({
+        # حفظ مسودة سحابية لتأمين الطلب واستخراج المعرف تلقائياً لقاعدة البيانات
+        response = supabase.table("orders").insert({
             "user_id": user_id,
             "game": user_sessions[user_id]["game_name"],
             "package": user_sessions[user_id]["package"],
@@ -150,6 +150,9 @@ def handle_payment_selection(call):
             "payment_method": selected_pay["name"],
             "status": "مسودة"
         }).execute()
+        
+        # حفظ رقم معرف الطلب في الجلسة لاستدعائه لاحقاً
+        user_sessions[user_id]["last_order_id"] = response.data[0]["id"]
     except Exception as e:
         print(f"Draft Insert Error: {e}")
 
@@ -166,13 +169,15 @@ def handle_payment_proof(message):
         return
 
     try:
-        # جلب أحدث مسودة طلب من قاعدة البيانات
-        response = supabase.table("orders").select("*").eq("user_id", user_id).eq("status", "مسودة").order("created_at", desc=True).limit(1).execute()
-        orders = response.data
-        if not orders:
-            return
+        order_id = session.get("last_order_id")
+        if not order_id:
+            # حل بديل في حال ضياع الجلسة المؤقتة
+            response = supabase.table("orders").select("*").eq("user_id", user_id).eq("status", "مسودة").order("created_at", desc=True).limit(1).execute()
+            if response.data:
+                order_id = response.data[0]["id"]
+            else:
+                return
 
-        order_data = orders[0]
         proof_photo = message.photo[-1].file_id if message.content_type == 'photo' else None
         proof_text = message.caption or "تم إرفاق صورة إشعار التحويل" if message.content_type == 'photo' else message.text
 
@@ -181,7 +186,7 @@ def handle_payment_proof(message):
             "proof_text": proof_text,
             "proof_photo": proof_photo,
             "status": "بانتظار المراجعة"
-        }).eq("id", order_data["id"]).execute()
+        }).eq("id", order_id).execute()
         
         final_order = update_res.data[0]
 
@@ -213,16 +218,14 @@ def handle_payment_proof(message):
     except Exception as e:
         print(f"Database/Admin Proof Error: {e}")
 
-# 7. لوحة تحكم الأدمن (الموافقة والرفض)
+# 7. لوحة تحكم الأدمن المصلحة بالكامل (الموافقة والرفض الفوري)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('admin_'))
 def handle_admin_actions(call):
     if str(call.from_user.id) != str(ADMIN_ID):
         bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص لمالك المتجر فقط!")
         return
-    data_parts = call.data.split('_')
-    action = data_parts[1]
-    order_id = data_parts[2]
-    client_id = data_parts[3]
-
-    if action == "ok":
-        supabase.table("orders").update({"status": "مكتمل"}).eq("id", order_id).execute()
+        
+    try:
+        # التفكيك المصلح والمحمي للبيانات لتقرأ الأوامر من السلسلة بدقة
+        data_parts = call.data.split('_')
+        action = data_parts[1]
