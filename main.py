@@ -33,7 +33,7 @@ games_menu = {
     },
     "ff": {
         "name": "فري فاير (FREE FIRE)",
-        "packages": {"100 جوهرة": "1", "210 جوهرة": "2", "530 جوهرة": "5"}
+        "packages": {"210 جوهرة": "2", "530 جوهرة": "5"}
     }
 }
 
@@ -113,7 +113,7 @@ def handle_package_selection(call):
 @bot.message_handler(func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_ID")
 def handle_player_id(message):
     user_id = str(message.from_user.id)
-    player_id = message.text.trim() if hasattr(message.text, 'trim') else message.text.strip()
+    player_id = message.text.strip()
     
     user_sessions[user_id]["player_id"] = player_id
     user_sessions[user_id]["step"] = "WAITING_PAYMENT"
@@ -121,11 +121,11 @@ def handle_player_id(message):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
         InlineKeyboardButton("💳 شحن عبر شام كاش (ShamCash)", callback_data="pay_shamcash"),
-        InlineKeyboardButton("🪙 شحن عبر محفظة CWallet (USDT)", callback_data="pay_cwallet")
+        InlineKeyboardButton("💰 محفظة CWallet", callback_data="pay_cwallet")
     )
-    bot.reply_to(message, f"✅ تم حفظ معرف اللاعب: `{player_id}`\n\n💰 الإجمالي المطلوب: *{user_sessions[user_id]['price']} دولار*\n\n👇 اختر وسيلة التحويل والدفع اليدوية المناسبة لك لتأكيد الطلب:", reply_markup=markup)
+    bot.reply_to(message, f"🎯 معرف اللاعب: `{player_id}`\n\n👇 اختر وسيلة الدفع المناسبة لإتمام الشحن:", reply_markup=markup)
 
-# 5. معالجة وسيلة الدفع وعرض بيانات التحويل وطلب الإشعار
+# 5. معالجة اختيار وسيلة الدفع وطلب إثبات التحويل
 @bot.callback_query_handler(func=lambda call: call.data.startswith('pay_'))
 def handle_payment_selection(call):
     user_id = str(call.from_user.id)
@@ -134,95 +134,99 @@ def handle_payment_selection(call):
         return
         
     pay_key = call.data.split('_')[1]
-    selected_pay = payment_details[pay_key]
-    
-    user_sessions[user_id]["payment_method"] = pay_key
+    user_sessions[user_id]["payment_key"] = pay_key
+    user_sessions[user_id]["payment_name"] = payment_details[pay_key]["name"]
     user_sessions[user_id]["step"] = "WAITING_PROOF"
     
-    # حفظ مسودة سحابية أولية في Supabase لتأمين الطلب
-    try:
-        supabase.table("orders").insert({
-            "user_id": user_id,
-            "game": user_sessions[user_id]["game_name"],
-            "package": user_sessions[user_id]["package"],
-            "price": user_sessions[user_id]["price"],
-            "player_id": user_sessions[user_id]["player_id"],
-            "payment_method": selected_pay["name"],
-            "status": "مسودة"
-        }).execute()
-    except Exception as e:
-        print(f"Draft Insert Error: {e}")
-
+    msg_text = payment_details[pay_key]["msg"]
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
-                          text=f"⚙️ *بيانات التحويل عبر ({selected_pay['name']}):*\n\n{selected_pay['msg']}\n\n📥 *خطوة حاسمة وأخيرة:* يرجى إتمام عملية التحويل، ثم إرسال صورة إيصال التحويل (إشعار) أو كتابة رقم العملية هنا مباشرة كرسالة لتأكيد الدفع ومراجعة طلبك:")
+                          text=f"{msg_text}\n\n📸 بعد إتمام التحويل، **قم بإرسال صورة الإشعار (لقطة الشاشة)** هنا مباشرة لتأكيد طلبك:")
 
-# 6. استقبال إثبات الدفع وتحديث الطلب وتنبيه الأدمن
-@bot.message_handler(content_types=['photo', 'text'])
+# 6. استقبال إشعار الدفع وإرسال الطلب للأدمن
+@bot.message_handler(content_types=['photo'], func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_PROOF")
 def handle_payment_proof(message):
     user_id = str(message.from_user.id)
-    session = user_sessions.get(user_id, {})
+    session = user_sessions[user_id]
     
-    if session.get("step") != "WAITING_PROOF":
-        return
-
+    order_id = random.randint(100000, 999999)
+    photo_id = message.photo[-1].file_id
+    
     try:
-        # جلب أحدث مسودة طلب من قاعدة البيانات
-        response = supabase.table("orders").select("*").eq("user_id", user_id).eq("status", "مسودة").order("created_at", desc=True).limit(1).execute()
-        orders = response.data
-        if not orders:
-            return
-
-        order_data = orders[0]
-        proof_photo = message.photo[-1].file_id if message.content_type == 'photo' else None
-        proof_text = message.caption or "تم إرفاق صورة إشعار التحويل" if message.content_type == 'photo' else message.text
-
-        # تحديث حالة الطلب سحابياً بانتظار المراجعة
-        update_res = supabase.table("orders").update({
-            "proof_text": proof_text,
-            "proof_photo": proof_photo,
-            "status": "بانتظار المراجعة"
-        }).eq("id", order_data["id"]).execute()
-        
-        final_order = update_res.data[0]
-
-        bot.reply_to(message, "✅ شكراً لك! تم تثبيت إثبات الدفع سحابياً وإرسال طلبك للإدارة بنجاح. سيتم مراجعة حسابنا وشحن حسابك وتنبيهك فوراً.")
-
-        admin_msg = (
-            f"🔔 *طلب شحن جديد سحابي ومضمون (#{final_order['id']})*\n\n"
-            f"👤 العميل: [{message.from_user.first_name}](tg://user?id={user_id})\n"
-            f"🎮 اللعبة: {final_order['game']}\n"
-            f"📦 الحزمة: {final_order['package']}\n"
-            f"🆔 معرف اللاعب: `{final_order['player_id']}`\n"
-            f"💰 السعر: {final_order['price']} دولار\n"
-            f"💳 وسيلة الدفع: {final_order['payment_method']}\n"
-            f"📝 الإثبات المرفق: {final_order['proof_text']}"
-        )
-
-        markup = InlineKeyboardMarkup()
-        markup.row(
-            InlineKeyboardButton("✅ موافقة وتفعيل الطلب", callback_data=f"admin_ok_{final_order['id']}_{user_id}"),
-            InlineKeyboardButton("❌ رفض وإلغاء الطلب", callback_data=f"admin_no_{final_order['id']}_{user_id}")
-        )
-
-        if final_order.get("proof_photo"):
-            bot.send_photo(ADMIN_ID, final_order["proof_photo"], caption=admin_msg, reply_markup=markup)
-        else:
-            bot.send_message(ADMIN_ID, admin_msg, reply_markup=markup)
-
-        del user_sessions[user_id]
+        supabase.table("orders").insert({
+            "order_id": order_id,
+            "user_id": user_id,
+            "game": session["game_name"],
+            "package": session["package"],
+            "player_id": session["player_id"],
+            "price": session["price"],
+            "payment_method": session["payment_name"],
+            "status": "pending"
+        }).execute()
     except Exception as e:
-        print(f"Database/Admin Proof Error: {e}")
+        print(f"Supabase Order Error: {e}")
 
-# 7. لوحة تحكم الأدمن (الموافقة والرفض)
-@bot.callback_query_handler(func=lambda call: call.data.startswith('admin_'))
-def handle_admin_actions(call):
+    bot.reply_to(message, f"⏳ **تم استلام طلبك بنجاح!**\nرقم الطلب: `#{order_id}`\nيتم الآن مراجعته من قبل الإدارة وسنقوم بإشعارك فور تفعيله.")
+
+    admin_markup = InlineKeyboardMarkup(row_width=2)
+    admin_markup.add(
+        InlineKeyboardButton("✅ موافقة وتفعيل الطلب", callback_data=f"approve_{order_id}_{user_id}"),
+        InlineKeyboardButton("❌ رفض وإلغاء الطلب", callback_data=f"reject_{order_id}_{user_id}")
+    )
+    
+    admin_msg = (
+        f"🔔 **طلب شحن جديد سحابي ومضمون (#{order_id})**\n\n"
+        f"👤 العميل: {message.from_user.first_name}\n"
+        f"🕹️ اللعبة: {session['game_name']}\n"
+        f"📦 الحزمة: {session['package']}\n"
+        f"🆔 معرف اللاعب: `{session['player_id']}`\n"
+        f"💰 السعر: {session['price']} دولار\n"
+        f"💳 وسيلة الدفع: {session['payment_name']}\n"
+        f"🧾 الإثبات المرفق: تم إرفاق صورة إشعار التحويل"
+    )
+    
+    try:
+        bot.send_photo(int(ADMIN_ID), photo_id, caption=admin_msg, reply_markup=admin_markup, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Failed to send to admin: {e}")
+        
+    user_sessions.pop(user_id, None)
+
+# 7. معالجة أزرار الأدمن (موافقة / رفض) والتأكد من هويته
+@bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
+def handle_admin_action(call):
     if str(call.from_user.id) != str(ADMIN_ID):
-        bot.answer_callback_query(call.id, "❌ عذراً، هذا الإجراء مخصص لمالك المتجر فقط!")
+        bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص للمسؤولين فقط!", show_alert=True)
         return
-    data_parts = call.data.split('_')
-    action = data_parts[1]
-    order_id = data_parts[2]
-    client_id = data_parts[3]
 
-    if action == "ok":
-        supabase.table("orders").update({"status": "مكتمل"}).eq("id", order_id).execute()
+    data_parts = call.data.split('_')
+    action = data_parts[0]
+    order_id = data_parts[1]
+    client_user_id = data_parts[2]
+    
+    if action == "approve":
+        try:
+            supabase.table("orders").update({"status": "approved"}).eq("order_id", order_id).execute()
+        except: pass
+        
+        try:
+            bot.send_message(int(client_user_id), f"🎉 **أخبار رائعة!** تم تفعيل طلب الشحن الخاص بك بنجاح لطلبك `#{order_id}`. تفقد حسابك في اللعبة الآن!")
+        except: pass
+        
+        bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                 caption=call.message.caption + f"\n\n🟢 **حالة الطلب: تم القبول والتفعيل بنجاح.**", reply_markup=None)
+        bot.answer_callback_query(call.id, "🟢 تم تفعيل الطلب بنجاح وإشعار العميل.")
+        
+    elif action == "reject":
+        try:
+            supabase.table("orders").update({"status": "rejected"}).eq("order_id", order_id).execute()
+        except: pass
+        
+        try:
+            bot.send_message(int(client_user_id), f"❌ **نأسف لإبلاغك،** تم رفض طلب الشحن الخاص بك `#{order_id}` نظراً لعدم تطابق بيانات التحويل أو الحساب. يرجى التواصل مع الدعم.")
+        except: pass
+        
+        bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
+                                 caption=call.message.caption + f"\n\n🔴 **حالة الطلب: تم الرفض والإلغاء.**", reply_markup=None)
+        bot.answer_callback_query(call.id, "🔴 تم رفض الطلب وإلغاؤه بنجاح.")
+
+# 8. إضافة أمر الـ Admin المشروط بمعرف المسؤول
