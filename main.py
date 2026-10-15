@@ -25,7 +25,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # الذاكرة المؤقتة لخطوات المستخدمين داخل الشات
 user_sessions = {}
 
-# قائمة الألعاب والأسعار والكميات (تمت إضافة حزمة 100 جوهرة)
+# قائمة الألعاب والأسعار والكميات
 games_menu = {
     "pubg": {
         "name": "ببجي موبايل (PUBG MOBILE)",
@@ -59,7 +59,6 @@ def send_welcome(message):
     user_id = str(message.from_user.id)
     user_sessions[user_id] = {}
 
-    # التحقق من وجود كود إحالة بالرابط (مثل /start ref_123456)
     referred_by = None
     args = message.text.split()
     if len(args) > 1 and args[1].startswith('ref_'):
@@ -147,7 +146,7 @@ def handle_package_selection(call):
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
                           text=f"🆔 حزمة الاختيار: *{pkg_name}* بسعر *{price} دولار*\n\n✍️ من فضلك، قم بكتابة وإرسال معرف اللاعب (Player ID) الخاص بك هنا في المحادثة مباشرة:")
 
-# 4. استقبال الـ Player ID وعرض وسائل الدفع (تم إكمال السطر المقطوع)
+# 4. استقبال الـ Player ID وعرض وسائل الدفع
 @bot.message_handler(func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_ID")
 def handle_player_id(message):
     user_id = str(message.from_user.id)
@@ -180,7 +179,7 @@ def handle_payment_selection(call):
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
                           text=f"{msg_text}\n\n📸 بعد إتمام التحويل، **قم بإرسال صورة الإشعار (لقطة الشاشة)** هنا مباشرة لتأكيد طلبك:")
 
-# 6. استقبال إشعار الدفع وإرسال الطلب للأدمن بأزرار الموافقة والرفض المباشرة
+# 6. استقبال إشعار الدفع وإرسال الطلب للأدمن بأزرار الموافقة والرفض
 @bot.message_handler(content_types=['photo'], func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_PROOF")
 def handle_payment_proof(message):
     user_id = str(message.from_user.id)
@@ -229,5 +228,7 @@ def handle_payment_proof(message):
         
     user_sessions.pop(user_id, None)
 
-# 7. معالجة أزرار الأدمن (موافقة / رفض) وتطبيق مكافأة الإحالة بشكل آمن
+# 7. معالجة أزرار الأدمن وتوزيع مكافأة الإحالة (تم إصلاح خطأ التقطيع البرمجي هنا)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
+def handle_admin_action(call):
+    if str(call.from_user.id) != str(ADMIN_ID):
