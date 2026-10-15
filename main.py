@@ -25,7 +25,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # الذاكرة المؤقتة لخطوات المستخدمين داخل الشات
 user_sessions = {}
 
-# قائمة الألعاب والأسعار والكميات (تمت إعادة الـ 100 جوهرة فري فاير)
+# قائمة الألعاب والأسعار والكميات (تمت إضافة حزمة 100 جوهرة)
 games_menu = {
     "pubg": {
         "name": "ببجي موبايل (PUBG MOBILE)",
@@ -53,22 +53,21 @@ async def process_webhook(request: Request):
     bot.process_new_updates([update])
     return {"status": "ok"}
 
-# 1. أمر البداية مع دعم روابط الإحالة وعرض الألعاب
+# 1. أمر البداية مع دعم روابط الإحالة وعرض الألعاب بأزرار شفافة
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
     user_sessions[user_id] = {}
 
-    # التحقق من وجود كود إحالة في الرابط (مثال: /start ref_123456)
+    # التحقق من وجود كود إحالة بالرابط (مثل /start ref_123456)
     referred_by = None
     args = message.text.split()
     if len(args) > 1 and args[1].startswith('ref_'):
         ref_id = args[1].replace('ref_', '')
-        if ref_id != user_id:  # منع المستخدم من إحالة نفسه
+        if ref_id != user_id:
             referred_by = ref_id
 
     try:
-        # جلب المستخدم للتأكد إذا كان مسجلاً مسبقاً لمنع تكرار الإحالات لشخص قديم
         user_check = supabase.table("users").select("user_id").eq("user_id", user_id).execute()
         
         if not user_check.data:
@@ -84,7 +83,6 @@ def send_welcome(message):
                 "username": message.from_user.username or "N/A",
                 "full_name": message.from_user.first_name or "N/A"
             }).eq("user_id", user_id).execute()
-            
     except Exception as e:
         print(f"Supabase Error: {e}")
 
@@ -93,9 +91,9 @@ def send_welcome(message):
         InlineKeyboardButton("🎮 ببجي موبايل (PUBG MOBILE)", callback_data="game_pubg"),
         InlineKeyboardButton("🔥 فري فاير (FREE FIRE)", callback_data="game_ff")
     )
-    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب السريع والأكثر استقراراً!\n\n🕹️ من فضلك اختر اللعبة المستهدفة من الأزرار أدناه للبدء:\n\n🔗 للحصول على رابط إحالتك الخاص اكتب أمر: /share", reply_markup=markup)
+    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب السريع والأكثر استقراراً!\n\n🕹️ من فضلك اختر اللعبة المستهدفة من الأزرار أدناه للبدء:\n\n🔗 للحصول على رابط إحالتك الخاص أرسل أمر: /share", reply_markup=markup)
 
-# أمر توليد ومشاركة رابط الإحالة
+# أمر مشاركة رابط الإحالة الخاص بالمستخدم
 @bot.message_handler(commands=['share'])
 def share_referral(message):
     user_id = str(message.from_user.id)
@@ -110,7 +108,7 @@ def share_referral(message):
 
     msg = (
         f"🔗 **رابط الإحالة الخاص بك:**\n`{ref_link}`\n\n"
-        f"💰 **نظام الأرباح:** شارك الرابط مع أصدقائك، وستحصل على عمولة قدرها **0.01$** تلقائياً عن كل صديق يقوم بأول عملية شحن ناجحة من البوت!\n\n"
+        f"💰 **نظام الأرباح:** شارك الرابط، وستحصل على عمولة **0.01$** تلقائياً عن كل صديق يقوم بأول عملية شحن ناجحة ويتم الموافقة عليها من الإدارة!\n\n"
         f"💳 رصيدك الحالي من الإحالات: **{balance}$**"
     )
     bot.reply_to(message, msg)
@@ -149,7 +147,7 @@ def handle_package_selection(call):
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
                           text=f"🆔 حزمة الاختيار: *{pkg_name}* بسعر *{price} دولار*\n\n✍️ من فضلك، قم بكتابة وإرسال معرف اللاعب (Player ID) الخاص بك هنا في المحادثة مباشرة:")
 
-# 4. استقبال الـ Player ID وعرض وسائل الدفع
+# 4. استقبال الـ Player ID وعرض وسائل الدفع (تم إكمال السطر المقطوع)
 @bot.message_handler(func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_ID")
 def handle_player_id(message):
     user_id = str(message.from_user.id)
@@ -182,7 +180,7 @@ def handle_payment_selection(call):
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, 
                           text=f"{msg_text}\n\n📸 بعد إتمام التحويل، **قم بإرسال صورة الإشعار (لقطة الشاشة)** هنا مباشرة لتأكيد طلبك:")
 
-# 6. استقبال إشعار الدفع وإرسال الطلب للأدمن
+# 6. استقبال إشعار الدفع وإرسال الطلب للأدمن بأزرار الموافقة والرفض المباشرة
 @bot.message_handler(content_types=['photo'], func=lambda message: user_sessions.get(str(message.from_user.id), {}).get("step") == "WAITING_PROOF")
 def handle_payment_proof(message):
     user_id = str(message.from_user.id)
@@ -231,4 +229,5 @@ def handle_payment_proof(message):
         
     user_sessions.pop(user_id, None)
 
-# 7. معالجة أزرار الأدمن وتوزيع مكافأة الإحالة عند الموافقة
+# 7. معالجة أزرار الأدمن (موافقة / رفض) وتطبيق مكافأة الإحالة بشكل آمن
+@bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
