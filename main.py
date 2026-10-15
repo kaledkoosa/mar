@@ -25,7 +25,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # الذاكرة المؤقتة لخطوات المستخدمين داخل الشات
 user_sessions = {}
 
-# قائمة الألعاب والأسعار والكميات
+# قائمة الألعاب والأسعار والكميات (تمت إعادة الـ 100 جوهرة فري فاير)
 games_menu = {
     "pubg": {
         "name": "ببجي موبايل (PUBG MOBILE)",
@@ -33,7 +33,7 @@ games_menu = {
     },
     "ff": {
         "name": "فري فاير (FREE FIRE)",
-        "packages": {"210 جوهرة": "2", "530 جوهرة": "5"}
+        "packages": {"100 جوهرة": "1", "210 جوهرة": "2", "530 جوهرة": "5"}
     }
 }
 
@@ -53,18 +53,38 @@ async def process_webhook(request: Request):
     bot.process_new_updates([update])
     return {"status": "ok"}
 
-# 1. أمر البداية وعرض الألعاب بأزرار شفافة
+# 1. أمر البداية مع دعم روابط الإحالة وعرض الألعاب
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = str(message.from_user.id)
     user_sessions[user_id] = {}
 
+    # التحقق من وجود كود إحالة في الرابط (مثال: /start ref_123456)
+    referred_by = None
+    args = message.text.split()
+    if len(args) > 1 and args[1].startswith('ref_'):
+        ref_id = args[1].replace('ref_', '')
+        if ref_id != user_id:  # منع المستخدم من إحالة نفسه
+            referred_by = ref_id
+
     try:
-        supabase.table("users").upsert({
-            "user_id": user_id,
-            "username": message.from_user.username or "N/A",
-            "full_name": message.from_user.first_name or "N/A"
-        }).execute()
+        # جلب المستخدم للتأكد إذا كان مسجلاً مسبقاً لمنع تكرار الإحالات لشخص قديم
+        user_check = supabase.table("users").select("user_id").eq("user_id", user_id).execute()
+        
+        if not user_check.data:
+            supabase.table("users").insert({
+                "user_id": user_id,
+                "username": message.from_user.username or "N/A",
+                "full_name": message.from_user.first_name or "N/A",
+                "referred_by": referred_by,
+                "balance": 0.0
+            }).execute()
+        else:
+            supabase.table("users").update({
+                "username": message.from_user.username or "N/A",
+                "full_name": message.from_user.first_name or "N/A"
+            }).eq("user_id", user_id).execute()
+            
     except Exception as e:
         print(f"Supabase Error: {e}")
 
@@ -73,7 +93,27 @@ def send_welcome(message):
         InlineKeyboardButton("🎮 ببجي موبايل (PUBG MOBILE)", callback_data="game_pubg"),
         InlineKeyboardButton("🔥 فري فاير (FREE FIRE)", callback_data="game_ff")
     )
-    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب السريع والأكثر استقراراً!\n\n🕹️ من فضلك اختر اللعبة المستهدفة من الأزرار أدناه للبدء:", reply_markup=markup)
+    bot.reply_to(message, "👋 مرحباً بك في متجر شحن الألعاب السريع والأكثر استقراراً!\n\n🕹️ من فضلك اختر اللعبة المستهدفة من الأزرار أدناه للبدء:\n\n🔗 للحصول على رابط إحالتك الخاص اكتب أمر: /share", reply_markup=markup)
+
+# أمر توليد ومشاركة رابط الإحالة
+@bot.message_handler(commands=['share'])
+def share_referral(message):
+    user_id = str(message.from_user.id)
+    bot_info = bot.get_me()
+    ref_link = f"https://t.me{bot_info.username}?start=ref_{user_id}"
+    
+    try:
+        user_data = supabase.table("users").select("balance").eq("user_id", user_id).execute()
+        balance = user_data.data[0]["balance"] if user_data.data else 0.0
+    except:
+        balance = 0.0
+
+    msg = (
+        f"🔗 **رابط الإحالة الخاص بك:**\n`{ref_link}`\n\n"
+        f"💰 **نظام الأرباح:** شارك الرابط مع أصدقائك، وستحصل على عمولة قدرها **0.01$** تلقائياً عن كل صديق يقوم بأول عملية شحن ناجحة من البوت!\n\n"
+        f"💳 رصيدك الحالي من الإحالات: **{balance}$**"
+    )
+    bot.reply_to(message, msg)
 
 # 2. معالجة اختيار اللعبة وعرض الباقات والأسعار
 @bot.callback_query_handler(func=lambda call: call.data.startswith('game_'))
@@ -94,7 +134,7 @@ def handle_game_selection(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('pkg_'))
 def handle_package_selection(call):
     user_id = str(call.from_user.id)
-    if user_id not in user_sessions:
+    if user_id not in user_sessions or not user_sessions[user_id]:
         bot.send_message(call.message.chat.id, "❌ انتهت الجلسة، يرجى كتابة /start من جديد.")
         return
         
@@ -129,7 +169,7 @@ def handle_player_id(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('pay_'))
 def handle_payment_selection(call):
     user_id = str(call.from_user.id)
-    if user_id not in user_sessions:
+    if user_id not in user_sessions or not user_sessions[user_id]:
         bot.send_message(call.message.chat.id, "❌ انتهت الجلسة، يرجى كتابة /start من جديد.")
         return
         
@@ -191,42 +231,4 @@ def handle_payment_proof(message):
         
     user_sessions.pop(user_id, None)
 
-# 7. معالجة أزرار الأدمن (موافقة / رفض) والتأكد من هويته
-@bot.callback_query_handler(func=lambda call: call.data.startswith('approve_') or call.data.startswith('reject_'))
-def handle_admin_action(call):
-    if str(call.from_user.id) != str(ADMIN_ID):
-        bot.answer_callback_query(call.id, "❌ عذراً، هذا الزر مخصص للمسؤولين فقط!", show_alert=True)
-        return
-
-    data_parts = call.data.split('_')
-    action = data_parts[0]
-    order_id = data_parts[1]
-    client_user_id = data_parts[2]
-    
-    if action == "approve":
-        try:
-            supabase.table("orders").update({"status": "approved"}).eq("order_id", order_id).execute()
-        except: pass
-        
-        try:
-            bot.send_message(int(client_user_id), f"🎉 **أخبار رائعة!** تم تفعيل طلب الشحن الخاص بك بنجاح لطلبك `#{order_id}`. تفقد حسابك في اللعبة الآن!")
-        except: pass
-        
-        bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                 caption=call.message.caption + f"\n\n🟢 **حالة الطلب: تم القبول والتفعيل بنجاح.**", reply_markup=None)
-        bot.answer_callback_query(call.id, "🟢 تم تفعيل الطلب بنجاح وإشعار العميل.")
-        
-    elif action == "reject":
-        try:
-            supabase.table("orders").update({"status": "rejected"}).eq("order_id", order_id).execute()
-        except: pass
-        
-        try:
-            bot.send_message(int(client_user_id), f"❌ **نأسف لإبلاغك،** تم رفض طلب الشحن الخاص بك `#{order_id}` نظراً لعدم تطابق بيانات التحويل أو الحساب. يرجى التواصل مع الدعم.")
-        except: pass
-        
-        bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                 caption=call.message.caption + f"\n\n🔴 **حالة الطلب: تم الرفض والإلغاء.**", reply_markup=None)
-        bot.answer_callback_query(call.id, "🔴 تم رفض الطلب وإلغاؤه بنجاح.")
-
-# 8. إضافة أمر الـ Admin المشروط بمعرف المسؤول
+# 7. معالجة أزرار الأدمن وتوزيع مكافأة الإحالة عند الموافقة
